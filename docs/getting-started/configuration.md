@@ -35,7 +35,7 @@ The root is resolved in priority order:
 
 ```bash
 # Relocate the whole install + runtime tree at install time:
-OPENJARVIS_HOME=~/apps/openjarvis curl -fsSL https://open-jarvis.github.io/OpenJarvis/install.sh | bash
+OPENJARVIS_HOME=~/apps/openjarvis bash scripts/install/install.sh
 
 # Or for a single run / your shell profile:
 export OPENJARVIS_HOME=~/apps/openjarvis

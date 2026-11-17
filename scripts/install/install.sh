@@ -13,7 +13,7 @@
 #
 # Environment overrides:
 #   OPENJARVIS_HOME        Install dir (default: $HOME/.openjarvis)
-#   OPENJARVIS_REPO_URL    git repo URL (default: https://github.com/open-jarvis/OpenJarvis.git)
+#   OPENJARVIS_REPO_URL    git repo URL (default: https://github.com/nikhil090805/-nikOpenJarvis.git)
 #   OPENJARVIS_FORCE_WSL   Set 1 to force WSL detection (testing)
 
 set -euo pipefail
@@ -230,7 +230,7 @@ fi
 # unset, $XDG_DATA_HOME/openjarvis if XDG_DATA_HOME is set). With nothing set
 # the root is ~/.openjarvis, so existing installs are untouched.
 OPENJARVIS_HOME="${OPENJARVIS_HOME:-$HOME/.openjarvis}"
-OPENJARVIS_REPO_URL="${OPENJARVIS_REPO_URL:-https://github.com/open-jarvis/OpenJarvis.git}"
+OPENJARVIS_REPO_URL="${OPENJARVIS_REPO_URL:-https://github.com/nikhil090805/-nikOpenJarvis.git}"
 SRC_DIR="$OPENJARVIS_HOME/src"
 VENV_DIR="$OPENJARVIS_HOME/.venv"
 STATE_DIR="$OPENJARVIS_HOME/.state"

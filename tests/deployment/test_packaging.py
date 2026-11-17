@@ -76,7 +76,7 @@ def test_desktop_app_syncs_the_native_group() -> None:
 def test_windows_installer_syncs_the_native_group() -> None:
     # The Windows source installer does not run maturin separately.
     assert (
-        "& $uvExe sync --extra desktop --group desktop-native"
+        "& $uvExe sync --locked --extra desktop --group desktop-native"
         in WINDOWS_INSTALL_PS1.read_text()
     ), (
         "the Windows installer must include `--group desktop-native` so "

@@ -30,7 +30,7 @@ For unattended installs, consent explicitly with `--analytics` or decline with
 `--no-analytics`:
 
 ```bash
-curl -fsSL https://open-jarvis.github.io/OpenJarvis/install.sh | bash -s -- --analytics
+bash scripts/install/install.sh --analytics
 # Or: ... | bash -s -- --no-analytics
 jarvis init --analytics
 # Or: jarvis init --no-analytics

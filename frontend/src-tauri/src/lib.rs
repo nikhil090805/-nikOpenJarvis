@@ -10,10 +10,10 @@ const OLLAMA_PORT: u16 = 11434;
 const JARVIS_PORT: u16 = 8000;
 #[cfg(not(all(target_os = "windows", target_arch = "aarch64")))]
 const DESKTOP_UV_SYNC_COMMAND: &str =
-    "uv sync --extra desktop --extra inference-cloud --extra inference-google --group desktop-native";
+    "uv sync --locked --extra desktop --extra inference-cloud --extra inference-google --group desktop-native";
 #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
 const DESKTOP_UV_SYNC_COMMAND: &str =
-    "uv sync --python cpython-3.12-windows-x86_64-none --extra desktop --extra inference-cloud --extra inference-google --group desktop-native";
+    "uv sync --locked --python cpython-3.12-windows-x86_64-none --extra desktop --extra inference-cloud --extra inference-google --group desktop-native";
 
 /// Small, fast model used when startup needs a default Ollama tag.
 const STARTUP_MODEL: &str = "qwen3.5:4b";
@@ -905,11 +905,13 @@ fn rust_toolchain_install_hint() -> &'static str {
     #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
     return "The desktop app needs Rust and Visual Studio Build Tools with the x64 C++ workload \
             for its x64 Python backend. Install Rust from https://rustup.rs, run \
-            `rustup target add --toolchain stable x86_64-pc-windows-msvc`, then relaunch.";
+            `rustup target add --toolchain stable x86_64-pc-windows-msvc`, then relaunch. \
+            (ARM64 intentionally keeps the stable x64-emulation toolchain override.)";
     #[cfg(not(all(target_os = "windows", target_arch = "aarch64")))]
-    "The desktop app needs the Rust toolchain to build `openjarvis_rust`. \
-     Install Rust from https://rustup.rs. On Windows, also install Visual Studio \
-     Build Tools with the C++ workload, then relaunch."
+    "The desktop app needs the pinned Rust 1.89.0 toolchain (minimal profile) to build \
+     `openjarvis_rust`. Run deploy/windows/install.ps1 once, or install it explicitly with \
+     `rustup toolchain install 1.89.0 --profile minimal`. On Windows, also install Visual \
+     Studio Build Tools with the C++ workload, then relaunch."
 }
 
 /// Windows ARM64 runs the current Python dependency stack under x64 emulation:
@@ -920,6 +922,9 @@ fn rust_toolchain_install_hint() -> &'static str {
     allow(unused_variables)
 )]
 fn prepare_backend_python(cmd: &mut tokio::process::Command) {
+    // Never let a rustup proxy silently download a toolchain (or its
+    // components) while the desktop app builds the native extension.
+    cmd.env("RUSTUP_AUTO_INSTALL", "0");
     #[cfg(all(target_os = "windows", target_arch = "aarch64"))]
     {
         cmd.env("UV_PYTHON", "cpython-3.12-windows-x86_64-none");

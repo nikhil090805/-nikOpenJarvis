@@ -21,8 +21,10 @@ members = [
 ]
 
 # uuid 1.27 requires Rust 1.89; keep this aligned with rust-toolchain.toml.
+# Fully qualified so Dockerfiles, CI and installers all select the same
+# rustup toolchain name (rustup treats "1.89" and "1.89.0" as distinct).
 [workspace.package]
-rust-version = "1.89"
+rust-version = "1.89.0"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

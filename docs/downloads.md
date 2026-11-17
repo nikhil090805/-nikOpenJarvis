@@ -17,7 +17,7 @@ processing happens on your local machine — the app connects to the backend you
 !!! info "Backend required"
     Start the backend before opening the desktop app. The quickstart script handles everything:
     ```bash
-    git clone https://github.com/open-jarvis/OpenJarvis.git && cd OpenJarvis
+    git clone https://github.com/nikhil090805/-nikOpenJarvis.git && cd -nikOpenJarvis
     ./scripts/quickstart.sh
     ```
 
@@ -25,15 +25,21 @@ processing happens on your local machine — the app connects to the backend you
 
 | Platform | Download | Notes |
 |----------|----------|-------|
-| macOS (Universal) | [:material-download: **OpenJarvis.dmg**](https://github.com/open-jarvis/OpenJarvis/releases/latest/download/OpenJarvis_universal.dmg) | Apple Silicon + Intel |
-| Windows (x64) | [:material-download: **OpenJarvis-setup.exe**](https://github.com/open-jarvis/OpenJarvis/releases/latest/download/OpenJarvis_x64-setup.exe) | Windows 10+ |
-| Windows (ARM64) | [:material-download: **OpenJarvis-arm64-setup.exe**](https://github.com/open-jarvis/OpenJarvis/releases/latest/download/OpenJarvis_arm64-setup.exe) | Windows 11 on ARM |
-| Linux (DEB) | [:material-download: **OpenJarvis.deb**](https://github.com/open-jarvis/OpenJarvis/releases/latest/download/OpenJarvis_amd64.deb) | Ubuntu, Debian |
-| Linux (RPM) | [:material-download: **OpenJarvis.rpm**](https://github.com/open-jarvis/OpenJarvis/releases/latest/download/OpenJarvis_x86_64.rpm) | Fedora, RHEL |
-| Linux (AppImage) | [:material-download: **OpenJarvis.AppImage**](https://github.com/open-jarvis/OpenJarvis/releases/latest/download/OpenJarvis_amd64.AppImage) | Any distro |
+| macOS (Universal) | [:material-download: **OpenJarvis.dmg**](https://github.com/nikhil090805/-nikOpenJarvis/releases/latest/download/OpenJarvis_universal.dmg) | Apple Silicon + Intel |
+| Windows (x64) | [:material-download: **OpenJarvis-setup.exe**](https://github.com/nikhil090805/-nikOpenJarvis/releases/latest/download/OpenJarvis_x64-setup.exe) | Windows 10+ |
+| Windows (ARM64) | [:material-download: **OpenJarvis-arm64-setup.exe**](https://github.com/nikhil090805/-nikOpenJarvis/releases/latest/download/OpenJarvis_arm64-setup.exe) | Windows 11 on ARM |
+| Linux (DEB) | [:material-download: **OpenJarvis.deb**](https://github.com/nikhil090805/-nikOpenJarvis/releases/latest/download/OpenJarvis_amd64.deb) | Ubuntu, Debian |
+| Linux (RPM) | [:material-download: **OpenJarvis.rpm**](https://github.com/nikhil090805/-nikOpenJarvis/releases/latest/download/OpenJarvis_x86_64.rpm) | Fedora, RHEL |
+| Linux (AppImage) | [:material-download: **OpenJarvis.AppImage**](https://github.com/nikhil090805/-nikOpenJarvis/releases/latest/download/OpenJarvis_amd64.AppImage) | Any distro |
+
+!!! note "This fork"
+    These assets are published by the desktop release workflow of
+    `nikhil090805/-nikOpenJarvis`. If the fork has no release yet,
+    build the desktop app from source as described in
+    `deploy/windows/README.md`.
 
 !!! tip "All releases"
-    Browse all versions on the [GitHub Releases](https://github.com/open-jarvis/OpenJarvis/releases) page.
+    Browse all versions on the [GitHub Releases](https://github.com/nikhil090805/-nikOpenJarvis/releases) page.
 
 ### macOS: "app is damaged" fix
 
@@ -70,8 +76,8 @@ The backend (Ollama, Python API server, inference) runs separately on your machi
 ### Build from source
 
 ```bash
-git clone https://github.com/open-jarvis/OpenJarvis.git
-cd OpenJarvis/desktop
+git clone https://github.com/nikhil090805/-nikOpenJarvis.git
+cd -nikOpenJarvis/frontend
 npm install
 npm run tauri build
 ```
@@ -88,8 +94,8 @@ your machine and the frontend connects via `localhost`.
 ### One-command setup
 
 ```bash
-git clone https://github.com/open-jarvis/OpenJarvis.git
-cd OpenJarvis
+git clone https://github.com/nikhil090805/-nikOpenJarvis.git
+cd -nikOpenJarvis
 ./scripts/quickstart.sh
 ```
 
@@ -108,8 +114,8 @@ If you prefer to run each step yourself:
 === "Step 1: Clone and install"
 
     ```bash
-    git clone https://github.com/open-jarvis/OpenJarvis.git
-    cd OpenJarvis
+    git clone https://github.com/nikhil090805/-nikOpenJarvis.git
+    cd -nikOpenJarvis
     uv sync --extra desktop
     cd frontend && npm install && cd ..
     ```
@@ -155,8 +161,8 @@ programmatically. Every feature is accessible from the terminal.
 ### Install
 
 ```bash
-git clone https://github.com/open-jarvis/OpenJarvis.git
-cd OpenJarvis
+git clone https://github.com/nikhil090805/-nikOpenJarvis.git
+cd -nikOpenJarvis
 uv sync
 ```
 
@@ -203,8 +209,8 @@ For programmatic access, the `Jarvis` class provides a high-level sync API.
 ### Install
 
 ```bash
-git clone https://github.com/open-jarvis/OpenJarvis.git
-cd OpenJarvis
+git clone https://github.com/nikhil090805/-nikOpenJarvis.git
+cd -nikOpenJarvis
 uv sync
 ```
 

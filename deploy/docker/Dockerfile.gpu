@@ -30,11 +30,14 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/root/.cargo/bin:${PATH}"
+# Pin the toolchain explicitly and forbid rustup proxy auto-installation.
+ENV RUSTUP_TOOLCHAIN=1.89.0
+ENV RUSTUP_AUTO_INSTALL=0
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
         sh -s -- -y --profile minimal --default-toolchain none && \
-    rustup toolchain install 1.89 --profile minimal && \
-    rustup default 1.89
+    rustup toolchain install 1.89.0 --profile minimal --no-self-update && \
+    rustup default 1.89.0
 
 WORKDIR /app
 
@@ -50,7 +53,7 @@ ENV PATH="/opt/openjarvis/venv/bin:${PATH}"
 
 RUN uv export --frozen --no-dev --extra server --no-emit-project > requirements.txt && \
     uv pip install --python /opt/openjarvis/venv/bin/python --no-deps -r requirements.txt && \
-    uv pip install --python /opt/openjarvis/venv/bin/python --no-deps "maturin>=1.12.6,<2"
+    uv pip install --python /opt/openjarvis/venv/bin/python --no-deps "maturin==1.16.0"
 
 COPY src/ src/
 COPY rust/ rust/

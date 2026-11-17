@@ -1,5 +1,10 @@
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
+# Keep this exact pin in sync with `maturin` in the root uv.lock. An exact pin
+# (rather than the previous >=1.0,<2.0 range) means `uv sync` never resolves a
+# different build backend than the one this repository has reviewed and
+# locked, and avoids an unpinned PyPI download at extension build time.
+# tests/install/test_toolchain_consistency.py enforces the match.
+requires = ["maturin==1.16.0"]
 build-backend = "maturin"
 
 [project]

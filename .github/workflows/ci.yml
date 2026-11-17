@@ -13,6 +13,10 @@ concurrency:
 permissions:
   contents: read
 
+# Never allow a rustup proxy to install a toolchain behind our back.
+env:
+  RUSTUP_AUTO_INSTALL: "0"
+
 jobs:
   security:
     uses: ./.github/workflows/security-sast.yml
@@ -63,8 +67,12 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install pinned Rust 1.89.0 (minimal)
+        shell: bash
+        run: |
+          rustup toolchain install 1.89.0 --profile minimal --no-self-update
+          rustup default 1.89.0
+          rustc --version
 
       - name: Cargo cache
         uses: actions/cache@v6
@@ -155,8 +163,12 @@ jobs:
         run: |
           uv run pytest tests/hardware/test_hardware_profiles.py tests/cli/test_cli.py tests/cli/test_daemon_cmd.py tests/cli/test_daemon_state.py tests/core/test_utils.py tests/install/test_windows_prerequisites.py -v -m "not live and not cloud"
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install pinned Rust 1.89.0 (minimal)
+        shell: bash
+        run: |
+          rustup toolchain install 1.89.0 --profile minimal --no-self-update
+          rustup default 1.89.0
+          rustc --version
 
       - name: Verify GUI process ownership and cleanup
         shell: bash
@@ -197,10 +209,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+      - name: Install pinned Rust 1.89.0 (minimal + lint tools for this job only)
+        shell: bash
+        run: |
+          rustup toolchain install 1.89.0 --profile minimal --no-self-update
+          rustup default 1.89.0
+          rustup component add rustfmt clippy --toolchain 1.89.0
+          rustc --version
 
       - name: Cargo cache
         uses: actions/cache@v6

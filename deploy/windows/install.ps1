@@ -9,59 +9,86 @@
     no Docker, no MSYS2.
 
     Steps:
-      1. Refuse non-Windows / Windows < 10.
-      2. Check Python 3.11 - 3.13 on PATH (3.14 has no numpy wheels yet,
-         see #432).
-      3. Check git on PATH.
-      4. Install uv (https://astral.sh/uv) if absent.
-      5. Clone the OpenJarvis repository to $env:LOCALAPPDATA\OpenJarvis
-         (override with $env:OPENJARVIS_HOME).
-      5b. Check for MSVC build tools and explain how to install them if absent - the mandatory
-         openjarvis-rust extension is compiled from source in step 6.
-      6. Run `uv sync --extra desktop --group desktop-native` so the FastAPI
-         server, speech backend, and native extension are importable.
-      7. Optionally register the scheduled-task service (see
-         deploy/windows/jarvis-service.ps1).
+      1.  Refuse non-Windows / Windows < 10.
+      2.  Check Python 3.11 - 3.13 on PATH (3.14 has no numpy wheels yet,
+          see #432).
+      3.  Check git on PATH.
+      4.  Install uv via winget, or a SHA-256-verified pinned uv release.
+      5.  Clone THIS FORK (nikhil090805/-nikOpenJarvis) to
+          $env:LOCALAPPDATA\OpenJarvis, or reuse -SourceDir. Existing
+          checkouts are verified, never blindly pulled or overwritten.
+      5b. Check the MSVC linker and Windows SDK.
+      5c. Install/verify the pinned Rust 1.89.0 toolchain with --profile
+          minimal and the x86_64-pc-windows-msvc target, with Rustup proxy
+          auto-installation disabled.
+      6.  Run `uv sync --locked --extra desktop --group desktop-native` and
+          verify that `openjarvis_rust` actually imports.
+      7.  Install/verify Ollama and a starter model.
+      8.  Optionally register the scheduled-task service (see
+          deploy/windows/jarvis-service.ps1).
 
-    Usage (one-liner):
-      irm https://open-jarvis.github.io/OpenJarvis/install.ps1 | iex
+    Usage (verified, recommended - no remote script piped into PowerShell):
+      git clone https://github.com/nikhil090805/-nikOpenJarvis.git
+      cd .\-nikOpenJarvis
+      powershell -ExecutionPolicy RemoteSigned -File .\deploy\windows\install.ps1 -SkipService
 
-    Usage (file invocation, supports flags):
-      irm https://open-jarvis.github.io/OpenJarvis/install.ps1 -OutFile install.ps1
-      .\install.ps1 -SkipService
+    The same script is published on the project docs site, but fork users
+    should run the copy from their own checkout so the installer and the
+    source tree always agree.
 
     Flags (when running the file directly):
       -SkipService    Don't prompt for / install the scheduled task.
       -Service        Install the scheduled task without prompting.
       -Force          Re-run all steps even if already done.
+      -SourceDir      Use an existing checkout instead of cloning; its
+                      origin must match the selected repository.
 
-    Under `irm | iex` the param block is unreachable (Invoke-Expression
-    can't pass named args into a piped script string), so the same knobs
-    are honored via env vars when the corresponding flag is absent:
+    The same knobs are honored via env vars when the corresponding flag is
+    absent (useful in non-interactive shells):
       $env:OPENJARVIS_SKIP_SERVICE = '1'
       $env:OPENJARVIS_SERVICE      = '1'
       $env:OPENJARVIS_FORCE        = '1'
+      $env:OPENJARVIS_REPO_URL     = 'https://github.com/nikhil090805/-nikOpenJarvis.git'
 
 .NOTES
     Loopback default: the scheduled-task service binds 127.0.0.1, so no
-    API key is needed. To expose on the LAN, edit the registered task to
-    pass `--host 0.0.0.0` AND set $env:OPENJARVIS_API_KEY (an
-    unauthenticated 0.0.0.0 server refuses to start). See
-    deploy/windows/README.md.
+    API key is needed. For LAN exposure the service now stores the key in a
+    DPAPI-protected file instead of a plaintext user environment variable;
+    see deploy/windows/README.md.
+
+    If Windows Defender quarantines a file in %USERPROFILE%\.rustup\downloads,
+    this installer FAILS SAFELY with investigation instructions. It never
+    restores quarantined files, adds exclusions, or disables Defender.
 #>
 
 [CmdletBinding()]
 param(
     [switch] $SkipService,
     [switch] $Service,
-    [switch] $Force
+    [switch] $Force,
+    [string] $SourceDir
 )
 
 $ErrorActionPreference = 'Stop'
 
-# Env-var fallback for the `irm | iex` path, where the param block is
-# unreachable (see header comment). Any explicit -switch wins; env vars
-# only fill in the gaps.
+# Pinned, fully qualified toolchain. Keep in sync with rust/rust-toolchain.toml
+# and rust/Cargo.toml. A two-part name ("1.89") is a DIFFERENT rustup
+# toolchain from "1.89.0" and caused repeated six-component downloads.
+$script:PinnedRustVersion = '1.89.0'
+$script:RustHostTarget    = 'x86_64-pc-windows-msvc'
+# This fork, not upstream. Override with $env:OPENJARVIS_REPO_URL.
+$script:DefaultRepoUrl    = 'https://github.com/nikhil090805/-nikOpenJarvis.git'
+# Pinned uv release used only when winget is unavailable. Astral publishes a
+# .sha256 sidecar next to each release asset; no hash is hardcoded here.
+$script:UvVersion         = '0.13.9'
+
+# Prevent rustup proxies from silently installing a toolchain (and its
+# components) during `uv sync`, `cargo --version` probes, etc. All installs
+# below are explicit and use --profile minimal.
+$env:RUSTUP_AUTO_INSTALL = '0'
+
+# Env-var fallback for non-interactive invocations. Any explicit -switch
+# wins; env vars only fill in the gaps.
 if (-not $SkipService -and $env:OPENJARVIS_SKIP_SERVICE) { $SkipService = $true }
 if (-not $Service     -and $env:OPENJARVIS_SERVICE)      { $Service     = $true }
 if (-not $Force       -and $env:OPENJARVIS_FORCE)        { $Force       = $true }
@@ -127,6 +154,140 @@ function Install-WithWinget {
     $cmd = Get-Command $CommandName -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
     return $null
+}
+
+# ---------------------------------------------------------------------------
+# Shared helpers - verified downloads, repository and Rust toolchain
+# ---------------------------------------------------------------------------
+
+function Get-NormalizedRepoUrl {
+    param([string] $Url)
+    if (-not $Url) { return '' }
+    $normalized = $Url.Trim().TrimEnd('/')
+    if ($normalized.ToLowerInvariant().EndsWith('.git')) {
+        $normalized = $normalized.Substring(0, $normalized.Length - 4)
+    }
+    return $normalized.ToLowerInvariant()
+}
+
+# Install uv from a PINNED GitHub release, verifying the archive against the
+# publisher-maintained .sha256 sidecar fetched over TLS. No hash is hardcoded,
+# no remote script is piped into PowerShell, and the temp directory is unique
+# and always cleaned up.
+function Install-UvFromVerifiedRelease {
+    $asset = 'uv-x86_64-pc-windows-msvc.zip'
+    $base = "https://github.com/astral-sh/uv/releases/download/$($script:UvVersion)"
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) `
+        ('openjarvis-uv-' + [guid]::NewGuid().ToString('N'))
+    $zipPath = Join-Path $tempDir $asset
+    $sumPath = "$zipPath.sha256"
+    try {
+        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+        $prevProgress = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
+        try {
+            Invoke-WebRequest -Uri "$base/$asset.sha256" -OutFile $sumPath -UseBasicParsing
+            Invoke-WebRequest -Uri "$base/$asset" -OutFile $zipPath -UseBasicParsing
+        } finally {
+            $ProgressPreference = $prevProgress
+        }
+        if (-not (Test-Path -LiteralPath $sumPath -PathType Leaf) -or
+            -not (Test-Path -LiteralPath $zipPath -PathType Leaf) -or
+            (Get-Item -LiteralPath $zipPath).Length -eq 0) {
+            Write-Warn2 '  uv release download was incomplete.'
+            return $null
+        }
+        $expected = ((Get-Content -LiteralPath $sumPath -Raw).Trim() -split '\s+')[0]
+        if ($expected -notmatch '^[0-9a-fA-F]{64}$') {
+            Write-Warn2 '  uv release checksum sidecar is malformed; refusing to continue.'
+            return $null
+        }
+        $actual = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actual -ne $expected.ToLowerInvariant()) {
+            Write-Warn2 '  uv release SHA-256 mismatch; refusing to run the downloaded binary.'
+            return $null
+        }
+        Write-Info "  uv $($script:UvVersion) archive SHA-256 verified"
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $tempDir -Force
+        $uvBin = Get-ChildItem -LiteralPath $tempDir -Filter 'uv.exe' -Recurse -File `
+            -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $uvBin) {
+            Write-Warn2 '  uv.exe not found in the verified archive.'
+            return $null
+        }
+        $targetDir = Join-Path $env:USERPROFILE '.local\bin'
+        if (-not (Test-Path -LiteralPath $targetDir)) {
+            New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+        }
+        Copy-Item -LiteralPath $uvBin.FullName -Destination (Join-Path $targetDir 'uv.exe') -Force
+        $uvxBin = Get-ChildItem -LiteralPath $tempDir -Filter 'uvx.exe' -Recurse -File `
+            -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($uvxBin) {
+            Copy-Item -LiteralPath $uvxBin.FullName -Destination (Join-Path $targetDir 'uvx.exe') -Force
+        }
+        $uvPath = Join-Path $targetDir 'uv.exe'
+        & $uvPath --version | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn2 '  The verified uv.exe failed to run.'
+            return $null
+        }
+        return $uvPath
+    } catch {
+        Write-Warn2 "  Verified uv download failed: $($_.Exception.Message)"
+        return $null
+    } finally {
+        if (Test-Path -LiteralPath $tempDir) {
+            Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+# Direct Ollama download is only a fallback when winget (which verifies
+# installer SHA-256 from a maintained manifest) is unavailable. It requires a
+# valid Authenticode signature from Ollama; if that cannot be verified we fail
+# safely instead of executing an unverified installer.
+function Install-OllamaFromVerifiedDownload {
+    $setup = Join-Path ([System.IO.Path]::GetTempPath()) `
+        ('OllamaSetup-' + [guid]::NewGuid().ToString('N') + '.exe')
+    try {
+        $prevProgress = $ProgressPreference
+        $ProgressPreference = 'SilentlyContinue'
+        try {
+            Invoke-WebRequest -Uri 'https://ollama.com/download/OllamaSetup.exe' `
+                -OutFile $setup -UseBasicParsing
+        } finally {
+            $ProgressPreference = $prevProgress
+        }
+        if (-not (Test-Path -LiteralPath $setup -PathType Leaf) -or
+            (Get-Item -LiteralPath $setup).Length -eq 0) {
+            Write-Warn2 '  Ollama download was incomplete.'
+            return $false
+        }
+        $sig = Get-AuthenticodeSignature -LiteralPath $setup
+        if ($sig.Status -ne 'Valid') {
+            Write-Warn2 "  OllamaSetup.exe has no valid Authenticode signature ($($sig.Status))."
+            return $false
+        }
+        $subject = $sig.SignerCertificate.Subject
+        if ($subject -notmatch 'Ollama') {
+            Write-Warn2 "  OllamaSetup.exe is signed by an unexpected publisher: $subject"
+            return $false
+        }
+        Write-Info "  OllamaSetup.exe Authenticode verified ($subject)"
+        $proc = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
+        if ($proc.ExitCode -ne 0) {
+            Write-Warn2 "  Ollama installer exited $($proc.ExitCode)."
+            return $false
+        }
+        return $true
+    } catch {
+        Write-Warn2 "  Ollama download/verification failed: $($_.Exception.Message)"
+        return $false
+    } finally {
+        if (Test-Path -LiteralPath $setup) {
+            Remove-Item -LiteralPath $setup -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -241,31 +402,32 @@ Write-Ok "git ($gitExe)"
 # ---------------------------------------------------------------------------
 
 Write-Info "Checking uv..."
+Update-PathFromRegistry
 $uvExe = (Get-Command uv -ErrorAction SilentlyContinue).Source
 if (-not $uvExe) {
-    Write-Info "Installing uv via astral.sh/uv (official PowerShell installer)..."
-    try {
-        Invoke-RestMethod -Uri 'https://astral.sh/uv/install.ps1' -UseBasicParsing | Invoke-Expression
-    } catch {
-        Write-Fail "uv install failed: $($_.Exception.Message)"
-    }
-    # The astral installer puts uv at %USERPROFILE%\.local\bin\uv.exe and
-    # adds that dir to the User PATH. The current process's PATH isn't
-    # refreshed automatically - prepend the install dir so the rest of
-    # this script picks it up.
-    $uvDir = Join-Path $env:USERPROFILE '.local\bin'
-    if (Test-Path (Join-Path $uvDir 'uv.exe')) {
-        $env:Path = "$uvDir;$env:Path"
-    }
-    $uvExe = (Get-Command uv -ErrorAction SilentlyContinue).Source
+    # winget verifies the installer hash from a maintained package manifest.
+    Write-Info "Installing uv via winget (hash-verified package manifest)..."
+    $uvExe = Install-WithWinget -WingetId 'astral-sh.uv' -CommandName 'uv'
     if (-not $uvExe) {
-        Write-Fail "uv installed but isn't on PATH. Re-open a fresh PowerShell and re-run."
+        Write-Info "winget unavailable or failed - falling back to a SHA-256-verified uv release..."
+        $uvExe = Install-UvFromVerifiedRelease
+    }
+    if (-not $uvExe) {
+        Write-Fail @"
+uv could not be installed or verified. Install it manually with one of:
+
+    winget install --id astral-sh.uv -e
+
+or download a signed archive from https://github.com/astral-sh/uv/releases,
+verify its published .sha256, and re-run this installer. This script will
+not execute an unverified remote installer.
+"@
     }
 }
 Write-Ok "uv ($uvExe)"
 
 # ---------------------------------------------------------------------------
-# 5. Clone the repo
+# 5. Source checkout - this fork by default, existing checkouts are safe
 # ---------------------------------------------------------------------------
 
 $installRoot = if ($env:OPENJARVIS_HOME) {
@@ -284,11 +446,58 @@ if (-not (Test-Path $installRoot)) {
 $repoUrl = if ($env:OPENJARVIS_REPO_URL) {
     $env:OPENJARVIS_REPO_URL
 } else {
-    'https://github.com/open-jarvis/OpenJarvis.git'
+    $script:DefaultRepoUrl
+}
+Write-Info "Source repo: $repoUrl"
+
+# -SourceDir installs from an existing checkout of this fork without cloning
+# again (handy when you already cloned it to run this script). Its origin is
+# still checked so we never silently build upstream or an unrelated fork.
+if ($SourceDir) {
+    $candidate = (Resolve-Path -LiteralPath $SourceDir -ErrorAction SilentlyContinue).Path
+    if (-not $candidate -or -not (Test-Path (Join-Path $candidate '.git'))) {
+        Write-Fail "-SourceDir must point at a git checkout (no .git found at '$SourceDir')."
+    }
+    $srcDir = $candidate
+}
+
+function Get-CheckoutOrigin {
+    param([string] $Path)
+    $origin = & $gitExe -C $Path remote get-url origin 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return ($origin | Select-Object -First 1)
+}
+
+function Assert-CheckoutMatchesRepo {
+    param([string] $Path, [string] $Expected)
+    $origin = Get-CheckoutOrigin $Path
+    if (-not $origin) {
+        Write-Fail "Could not read 'origin' from the existing checkout at $Path."
+    }
+    if ((Get-NormalizedRepoUrl $origin) -ne (Get-NormalizedRepoUrl $Expected)) {
+        Write-Fail @"
+The existing checkout at $Path points at:
+  $origin
+but this installer is configured for:
+  $Expected
+
+Refusing to overwrite it. Use -SourceDir with the correct checkout, set
+`$env:OPENJARVIS_REPO_URL explicitly, or move the old checkout aside first.
+"@
+    }
+    Write-Ok "Existing checkout origin matches the selected repository"
 }
 
 if (Test-Path (Join-Path $srcDir '.git')) {
+    # Idempotent re-run: verify BEFORE touching anything. Never `git pull`
+    # over an existing checkout that belongs to a different repository or has
+    # uncommitted user work.
+    Assert-CheckoutMatchesRepo $srcDir $repoUrl
     if ($Force) {
+        $dirty = @(& $gitExe -C $srcDir status --porcelain 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) {
+            Write-Fail "Refusing to update $srcDir: uncommitted changes present. Commit or stash them, then re-run with -Force."
+        }
         Write-Info "Force: pulling latest from $repoUrl..."
         & $gitExe -C $srcDir pull --ff-only
         if ($LASTEXITCODE -ne 0) { Write-Fail "git pull failed" }
@@ -315,11 +524,17 @@ if (Test-Path (Join-Path $srcDir '.git')) {
 # `--group desktop-native` builds openjarvis-rust from source via maturin
 # (pyproject.toml pins it to a local path; it is not published to PyPI), and
 # src/openjarvis/_rust_bridge.py raises a hard ImportError when the module is
-# missing - there is no pure-Python fallback. maturin will bootstrap a Rust
-# toolchain into a temp dir if cargo is absent, which is why this failure is
-# so confusing: cargo appears to run fine and then every build script dies at
-# `error: linker 'link.exe' not found`. The x86_64-pc-windows-msvc target
-# needs the MSVC linker, which no earlier step installs (#1060).
+# missing - there is no pure-Python fallback.
+#
+# Rust provisioning, precisely: maturin itself just shells out to cargo/rustc,
+# but its PEP 517 build backend pulls in `puccinialin`, which WILL download and
+# run rustup-init into a temp dir when no cargo is found. That produces an
+# unmanaged, unpinned toolchain and can trigger repeated component downloads.
+# Step 5c therefore provides cargo/rustc through the pinned 1.89.0 minimal
+# toolchain FIRST, then sets RUSTUP_TOOLCHAIN=1.89.0 and RUSTUP_AUTO_INSTALL=0,
+# so neither rustup proxies nor the build backend bootstrap anything. The
+# x86_64-pc-windows-msvc target also needs the MSVC linker, which no earlier
+# step installs (#1060).
 function Test-MsvcLinker {
     # Git/MSYS can put an unrelated GNU link.exe on PATH. Only Microsoft's
     # linker satisfies the native extension's MSVC prerequisite.
@@ -345,9 +560,31 @@ function Test-MsvcLinker {
     return $false
 }
 
+# The native extension also links against Windows import libraries. A missing
+# Windows SDK produces confusing link errors, so verify it explicitly. This is
+# a best-effort probe: some valid installs only expose the SDK inside a
+# Developer Command Prompt, so a miss is a warning, not a hard failure.
+function Test-WindowsSdk {
+    $roots = @()
+    if ($env:WindowsSdkDir) { $roots += (Join-Path $env:WindowsSdkDir 'Include') }
+    if (${env:ProgramFiles(x86)}) {
+        $roots += (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Include')
+    }
+    foreach ($root in $roots) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        $versions = Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue
+        foreach ($version in $versions) {
+            if (Test-Path -LiteralPath (Join-Path $version.FullName 'um\Windows.h') -PathType Leaf) {
+                return $true
+            }
+        }
+    }
+    return $false
+}
+
 Write-Info "Checking MSVC build tools (needed to compile the native extension)..."
 if (Test-MsvcLinker) {
-    Write-Ok "MSVC build tools present"
+    Write-Ok "MSVC linker (link.exe) present"
 } else {
     # Detect and instruct only. Installing the Build Tools is a multi-GB
     # download behind a UAC prompt, which is not something an installer
@@ -375,14 +612,134 @@ Then re-run this installer.
 "@
 }
 
+if (-not (Test-WindowsSdk)) {
+    Write-Warn2 "Windows SDK headers were not found in the usual locations."
+    Write-Warn2 "  If linking fails with missing Windows libraries, install the"
+    Write-Warn2 "  'Windows 11 SDK' component via Visual Studio Build Tools."
+} else {
+    Write-Ok "Windows SDK headers present"
+}
+
 # ---------------------------------------------------------------------------
-# 6. uv sync --extra desktop --group desktop-native
+# 5c. Rust toolchain - explicit, pinned, minimal, no proxy auto-install
 # ---------------------------------------------------------------------------
 
-Write-Info "Running 'uv sync --extra desktop --group desktop-native' in $srcDir (this can take a few minutes)..."
+function Get-RustupCommand {
+    $cmd = Get-Command rustup -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    $fallback = Join-Path $env:USERPROFILE '.cargo\bin\rustup.exe'
+    if (Test-Path -LiteralPath $fallback) { return $fallback }
+    return $null
+}
+
+# Health check uses an EXPLICIT toolchain name and RUSTUP_AUTO_INSTALL=0, so
+# it can never trigger a download or a component install.
+function Test-PinnedRustToolchain {
+    param([string] $RustupExe)
+    if (-not $RustupExe) { return $false }
+    try {
+        $rustcOut = & $RustupExe run $script:PinnedRustVersion rustc --version 2>$null
+        if ($LASTEXITCODE -ne 0) { return $false }
+        & $RustupExe run $script:PinnedRustVersion cargo --version 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { return $false }
+        if (-not ($rustcOut -match '1\.89\.0')) { return $false }
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Assert-RustTarget {
+    param([string] $RustupExe)
+    $targets = @(& $RustupExe target list --installed --toolchain $script:PinnedRustVersion 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail "rustup could not list installed targets for $($script:PinnedRustVersion). Run 'rustup toolchain install $($script:PinnedRustVersion) --profile minimal' manually."
+    }
+    if ($targets -notcontains $script:RustHostTarget) {
+        Write-Info "  Adding Rust target $($script:RustHostTarget)..."
+        & $RustupExe target add --toolchain $script:PinnedRustVersion $script:RustHostTarget
+        if ($LASTEXITCODE -ne 0) {
+            Write-Fail "rustup could not add target $($script:RustHostTarget)."
+        }
+    }
+    Write-Ok "Rust target $($script:RustHostTarget)"
+}
+
+function Assert-RustToolchain {
+    Write-Info "Checking Rust toolchain ($($script:PinnedRustVersion), minimal profile)..."
+    Update-PathFromRegistry
+    $rustupExe = Get-RustupCommand
+    if (-not $rustupExe) {
+        Write-Fail @"
+rustup was not found, so the mandatory openjarvis-rust extension cannot be
+built. Install Rust from https://rustup.rs (choose the default MSVC host
+toolchain), then re-run this installer. This script deliberately does not
+download or execute an unverified rustup-init binary.
+"@
+    }
+    Write-Info "  rustup ($rustupExe)"
+
+    # Read-only because RUSTUP_AUTO_INSTALL=0 was set at the top of this script.
+    $activeToolchain = & $rustupExe show active-toolchain 2>$null
+    if ($LASTEXITCODE -eq 0 -and $activeToolchain) {
+        Write-Info "  active toolchain: $($activeToolchain | Select-Object -First 1)"
+    }
+
+    $rustcCmd = Get-Command rustc -ErrorAction SilentlyContinue
+    $cargoCmd = Get-Command cargo -ErrorAction SilentlyContinue
+    if ($rustcCmd) { Write-Info "  rustc ($($rustcCmd.Source))" } else { Write-Info "  rustc: proxy not on PATH yet" }
+    if ($cargoCmd) { Write-Info "  cargo ($($cargoCmd.Source))" } else { Write-Info "  cargo: proxy not on PATH yet" }
+
+    $registered = @(& $rustupExe toolchain list 2>$null) | Where-Object { $_ -match '^1\.89\.0' }
+
+    if (-not (Test-PinnedRustToolchain $rustupExe)) {
+        if ($registered) {
+            Write-Warn2 "  Rust $($script:PinnedRustVersion) is registered but rustc/cargo cannot run (partial install)."
+            Write-Warn2 "  Attempting ONE repair install. Never restore quarantined Defender files."
+        }
+        Write-Info "  Installing Rust $($script:PinnedRustVersion) with --profile minimal (single attempt)..."
+        & $rustupExe toolchain install $script:PinnedRustVersion --profile minimal --no-self-update
+        if ($LASTEXITCODE -ne 0) {
+            Write-Fail "rustup failed to install $($script:PinnedRustVersion). Check the output above."
+        }
+        if (-not (Test-PinnedRustToolchain $rustupExe)) {
+            Write-Fail @"
+Rust $($script:PinnedRustVersion) is still not usable after the install attempt.
+This normally means the toolchain is partially installed (for example a
+component download was quarantined by Windows Defender). Safe recovery:
+
+  1. Review Windows Security -> Protection history. Do NOT restore the
+     quarantined file, add an exclusion, or disable Defender.
+  2. Verify the detection against the official Rust 1.89.0 checksums and
+     signatures (see deploy/windows/README.md).
+  3. Remove ONLY the incomplete toolchain:
+        rustup toolchain uninstall 1.89.0
+  4. Re-run this installer.
+"@
+        }
+    } else {
+        Write-Ok "Rust $($script:PinnedRustVersion) already healthy (no download needed)"
+    }
+
+    Assert-RustTarget $rustupExe
+
+    # Force every later cargo/rustc proxy call - including the ones maturin
+    # makes during `uv sync` - onto the pinned toolchain with auto-install off.
+    $env:RUSTUP_TOOLCHAIN = $script:PinnedRustVersion
+    $env:RUSTUP_AUTO_INSTALL = '0'
+    Write-Info "  RUSTUP_TOOLCHAIN=$($script:PinnedRustVersion); RUSTUP_AUTO_INSTALL=0 for the build"
+}
+
+Assert-RustToolchain
+
+# ---------------------------------------------------------------------------
+# 6. uv sync --locked --extra desktop --group desktop-native
+# ---------------------------------------------------------------------------
+
+Write-Info "Running 'uv sync --locked --extra desktop --group desktop-native' in $srcDir (this can take a few minutes)..."
 Push-Location $srcDir
 try {
-    & $uvExe sync --extra desktop --group desktop-native
+    & $uvExe sync --locked --extra desktop --group desktop-native
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "uv sync failed with exit code $LASTEXITCODE. Check the output above."
     }
@@ -391,43 +748,50 @@ try {
 }
 Write-Ok "Dependencies installed"
 
+Write-Info "Verifying the compiled native extension..."
+& $uvExe run --no-sync --project $srcDir python -c "import openjarvis_rust"
+if ($LASTEXITCODE -ne 0) {
+    Write-Fail @"
+'openjarvis_rust' could not be imported after uv sync. The native extension
+was not built correctly; the installer is NOT reporting success. Check the
+uv sync output above, then run:
+
+    cd "$srcDir"
+    uv sync --locked --extra desktop --group desktop-native
+    uv run python -c "import openjarvis_rust"
+"@
+}
+Write-Ok "openjarvis_rust extension imports successfully"
+
 # ---------------------------------------------------------------------------
 # 7. Ollama - install + start + wait for daemon
 # ---------------------------------------------------------------------------
 
 Write-Info "Checking Ollama..."
+Update-PathFromRegistry
 $ollamaExe = (Get-Command ollama -ErrorAction SilentlyContinue).Source
 if (-not $ollamaExe) {
-    Write-Info "  Ollama not on PATH - downloading the official installer (~150 MB)..."
-    $ollamaSetup = Join-Path $env:TEMP 'OllamaSetup.exe'
-    # SilentlyContinue is load-bearing in PS 5.1: the default progress
-    # bar renderer slows Invoke-WebRequest down 30x on large downloads
-    # (a known PS5.1 issue), turning a 30s download into 15+ minutes.
-    $prevProgress = $ProgressPreference
-    $ProgressPreference = 'SilentlyContinue'
-    try {
-        Invoke-WebRequest `
-            -Uri 'https://ollama.com/download/OllamaSetup.exe' `
-            -OutFile $ollamaSetup `
-            -UseBasicParsing
-    } catch {
-        Remove-Item $ollamaSetup -ErrorAction SilentlyContinue  # clean up partial download
-        $ProgressPreference = $prevProgress
-        Write-Fail "Ollama download failed: $($_.Exception.Message)`nInstall manually from https://ollama.com, then re-run."
-    } finally {
-        $ProgressPreference = $prevProgress
+    # Prefer winget: its maintained manifest verifies the installer SHA-256.
+    Write-Info "  Ollama not on PATH - installing via winget (hash-verified manifest)..."
+    $installed = Install-WithWinget -WingetId 'Ollama.Ollama' -CommandName 'ollama'
+    if (-not $installed) {
+        Write-Info "  winget unavailable or failed - falling back to a signature-verified direct download..."
+        $verified = Install-OllamaFromVerifiedDownload
+        if (-not $verified) {
+            Write-Fail @"
+Ollama could not be installed or verified automatically. Install it manually
+from https://ollama.com/download (or 'winget install --id Ollama.Ollama -e'),
+then re-run this installer. This script will not execute an installer whose
+Authenticode signature and publisher could not be verified.
+"@
+        }
+        Update-PathFromRegistry
+        $installed = (Get-Command ollama -ErrorAction SilentlyContinue).Source
     }
-    # OllamaSetup.exe is built with NSIS, whose silent-install flag is
-    # /S (uppercase). The Inno-Setup-style /silent would open the GUI
-    # and hang `Start-Process -Wait` indefinitely.
-    Write-Info "  Running OllamaSetup.exe /S (this can take a minute)..."
-    Start-Process -FilePath $ollamaSetup -ArgumentList '/S' -Wait
-    Remove-Item $ollamaSetup -ErrorAction SilentlyContinue
-    Update-PathFromRegistry
-    $ollamaExe = (Get-Command ollama -ErrorAction SilentlyContinue).Source
-    if (-not $ollamaExe) {
-        Write-Fail "Ollama installer ran but 'ollama' isn't on PATH. Open a fresh PowerShell and re-run, or install manually from https://ollama.com."
+    if (-not $installed) {
+        Write-Fail "Ollama was installed but 'ollama' is not on PATH. Open a fresh PowerShell and re-run."
     }
+    $ollamaExe = $installed
 }
 Write-Ok "Ollama ($ollamaExe)"
 
@@ -465,13 +829,21 @@ if (-not $ollamaReady) {
 
 $modelPullOk = $false
 if ($ollamaReady) {
-    Write-Info "Pulling qwen3.5:2b (~1.5 GB) so 'jarvis' works on first run..."
-    & $ollamaExe pull 'qwen3.5:2b'
-    if ($LASTEXITCODE -eq 0) {
+    # Idempotent: don't re-pull (or report a misleading fresh download) when
+    # the starter model is already in the local Ollama store.
+    $existingModels = @(& $ollamaExe list 2>$null)
+    if ($LASTEXITCODE -eq 0 -and ($existingModels -match 'qwen3\.5:2b')) {
         $modelPullOk = $true
-        Write-Ok "Starter model ready"
+        Write-Ok "Starter model already present"
     } else {
-        Write-Warn2 "ollama pull failed; the bg-orchestrator will retry once Ollama is reachable."
+        Write-Info "Pulling qwen3.5:2b (~1.5 GB) so 'jarvis' works on first run..."
+        & $ollamaExe pull 'qwen3.5:2b'
+        if ($LASTEXITCODE -eq 0) {
+            $modelPullOk = $true
+            Write-Ok "Starter model ready"
+        } else {
+            Write-Warn2 "ollama pull failed; the bg-orchestrator will retry once Ollama is reachable."
+        }
     }
 } else {
     Write-Warn2 "Skipping model pull - daemon wasn't ready."
@@ -553,7 +925,7 @@ if ($Service) {
     Write-Warn2 "Skipping scheduled-task setup - this PowerShell is not elevated."
     Write-Warn2 "  Register-ScheduledTask requires admin. To install the service later:"
     Write-Warn2 "    Right-click PowerShell -> Run as administrator, then run:"
-    Write-Warn2 "    powershell -ExecutionPolicy Bypass -File `"$serviceScript`" install"
+    Write-Warn2 "    powershell -ExecutionPolicy RemoteSigned -File `"$serviceScript`" install"
 } else {
     # Interactive prompt only when there's a real user at the keyboard
     # AND stdin isn't piped. [Environment]::UserInteractive is the
@@ -568,7 +940,7 @@ if ($Service) {
     } else {
         Write-Warn2 "Non-interactive install - skipping scheduled-task setup."
         Write-Warn2 "To register the service later, run (from an elevated PowerShell):"
-        Write-Warn2 "  powershell -ExecutionPolicy Bypass -File `"$serviceScript`" install"
+        Write-Warn2 "  powershell -ExecutionPolicy RemoteSigned -File `"$serviceScript`" install"
     }
 }
 
@@ -577,7 +949,7 @@ if ($shouldInstallService) {
         Write-Fail "Service script not found at $serviceScript (the clone may be missing files; try -Force)."
     }
     Write-Info "Installing scheduled task..."
-    & powershell -ExecutionPolicy Bypass -File $serviceScript install -InstallRoot $installRoot
+    & powershell -ExecutionPolicy RemoteSigned -File $serviceScript install -InstallRoot $installRoot
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "Scheduled task setup failed."
     }
@@ -622,5 +994,8 @@ if ($shouldInstallService) {
     Write-Host "           powershell -File `"$serviceScript`" uninstall    (remove)"
 }
 Write-Host ""
-Write-Host "  Docs:    https://open-jarvis.github.io/OpenJarvis/"
+Write-Host "  Docs:    https://github.com/nikhil090805/-nikOpenJarvis/blob/main/deploy/windows/README.md"
+Write-Host "  Health:  http://127.0.0.1:8000/health"
+Write-Host "  Desktop: install the OpenJarvis_x64-setup.exe release, or build from frontend/."
+Write-Host "           See deploy/windows/README.md (Desktop GUI section)."
 Write-Host ""

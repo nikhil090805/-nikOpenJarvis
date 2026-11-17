@@ -42,15 +42,27 @@ OpenJarvis is that stack. It is a framework for local-first personal AI, built a
 
 Pick your platform and run one command. Each installer handles [uv](https://docs.astral.sh/uv/), the Python venv, Ollama, and a starter model — about 3 minutes on broadband.
 
-| Platform | One-liner |
+| Platform | Command |
 |---|---|
-| **macOS · Linux · WSL2** | `curl -fsSL https://open-jarvis.github.io/OpenJarvis/install.sh \| bash` |
-| **Native Windows** | `irm https://open-jarvis.github.io/OpenJarvis/install.ps1 \| iex` |
-| **Desktop GUI** | Download `.exe` / `.dmg` / `.deb` / `.rpm` / `.AppImage` from the [latest release](https://github.com/open-jarvis/OpenJarvis/releases/latest) |
+| **macOS · Linux · WSL2** | `git clone https://github.com/nikhil090805/-nikOpenJarvis.git && cd -nikOpenJarvis && bash scripts/install/install.sh` |
+| **Native Windows (this fork)** | `git clone https://github.com/nikhil090805/-nikOpenJarvis.git`, then `powershell -ExecutionPolicy RemoteSigned -File .\deploy\windows\install.ps1 -SkipService` |
+| **Desktop GUI** | Download the Windows `.exe` (or macOS/Linux packages) from this fork's [releases](https://github.com/nikhil090805/-nikOpenJarvis/releases), or build from source (below). |
 
-Then `jarvis` to start. The Rust extension and larger models continue downloading in the background; `jarvis doctor` shows status.
+Then `jarvis` to start. `jarvis doctor` shows status; the Windows installer
+verifies `import openjarvis_rust` before reporting success.
 
-Platform-specific notes (WSL2 setup, native-Windows scheduled-task service, desktop prerequisites, manual / contributor install): see the [installation docs](https://open-jarvis.github.io/OpenJarvis/getting-started/install/).
+> **Native Windows:** do not pipe a remote script into PowerShell. Run the
+> installer from your own fork checkout. It provisions Rust **1.89.0**
+> (`minimal`, `x86_64-pc-windows-msvc`), verifies the MSVC linker/SDK and
+> Ollama, and defaults to this fork's repository. See
+> [`deploy/windows/README.md`](deploy/windows/README.md) for the complete
+> verified procedure, prerequisites, desktop GUI launch and safe Defender
+> investigation steps.
+
+Platform-specific notes (WSL2 setup, native-Windows scheduled-task service,
+desktop prerequisites, manual / contributor install): see the
+[installation docs](https://open-jarvis.github.io/OpenJarvis/getting-started/install/)
+and [`docs/getting-started/windows-native.md`](docs/getting-started/windows-native.md).
 
 ## Quick Start
 
@@ -63,7 +75,7 @@ jarvis init --preset <name> --force  # replace config with a starter preset
 `jarvis gui` starts the local API server and frontend, then opens the graphical
 chat interface in your default browser. It requires Node.js 22+ and is
 available from a source checkout; packaged desktop installers are available
-from the [latest release](https://github.com/open-jarvis/OpenJarvis/releases/latest).
+from this fork's [releases](https://github.com/nikhil090805/-nikOpenJarvis/releases).
 
 > Prefix `jarvis ...` with `uv run`, or `source .venv/bin/activate` first.
 
@@ -129,7 +141,8 @@ Full documentation — including Docker deployment, cloud engines, development s
 
 ## Community
 
-- **GitHub:** [github.com/open-jarvis/OpenJarvis](https://github.com/open-jarvis/OpenJarvis)
+- **Upstream:** [github.com/open-jarvis/OpenJarvis](https://github.com/open-jarvis/OpenJarvis)
+- **This fork:** [github.com/nikhil090805/-nikOpenJarvis](https://github.com/nikhil090805/-nikOpenJarvis)
 - **Discord:** [discord.gg/CMVBmDQ5Fj](https://discord.gg/CMVBmDQ5Fj)
 - **X / Twitter:** [@OpenJarvisAI](https://x.com/OpenJarvisAI)
 - **Docs:** [open-jarvis.github.io/OpenJarvis](https://open-jarvis.github.io/OpenJarvis/)
@@ -141,8 +154,8 @@ We welcome contributions! See the [Contributing Guide](CONTRIBUTING.md) for ince
 Quick start for contributors:
 
 ```bash
-git clone https://github.com/open-jarvis/OpenJarvis.git
-cd OpenJarvis
+git clone https://github.com/nikhil090805/-nikOpenJarvis.git
+cd -nikOpenJarvis
 uv sync --extra dev
 uv run pre-commit install
 uv run pytest tests/ -v

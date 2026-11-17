@@ -6,10 +6,18 @@ set -euo pipefail
 # the backend API server and frontend, then opens the browser.
 #
 # Usage:
-#   git clone https://github.com/open-jarvis/OpenJarvis.git
-#   cd OpenJarvis
+#   git clone https://github.com/nikhil090805/-nikOpenJarvis.git
+#   cd -nikOpenJarvis
 #   ./scripts/quickstart.sh
+#
+# This is the Linux / macOS / WSL2 developer quickstart. Native Windows users
+# must use deploy/windows/install.ps1 (see docs/getting-started/windows-native.md).
 # ──────────────────────────────────────────────────────────────────────
+
+# Never let a rustup proxy install a toolchain (or its components) behind our
+# back during a version probe or dependency resolution. All installs below are
+# explicit and use --profile minimal.
+export RUSTUP_AUTO_INSTALL=0
 
 BLUE='\033[0;34m'
 GREEN='\033[0;32m'
@@ -107,14 +115,24 @@ with open(sys.argv[1]) as handle:
     match = re.search(r'^channel\s*=\s*"(\d+\.\d+(?:\.\d+)?)"', handle.read(), re.M)
 if match is None:
     sys.exit("The quickstart requires a versioned Rust toolchain pin.")
-print(match.group(1))
+version = match.group(1)
+# rustup treats "1.89" and "1.89.0" as different toolchain names. Require the
+# fully qualified pin so a probe can never silently install a second toolchain.
+if len(version.split(".")) != 3:
+    sys.exit("The Rust toolchain pin must be fully qualified (e.g. 1.89.0).")
+print(version)
 PY
 )
 
+# Force every later cargo/rustc proxy call onto the pinned toolchain, with
+# auto-installation disabled. This also means a version probe can run from the
+# repo root instead of inside rust/ (where rust-toolchain.toml lives).
+export RUSTUP_TOOLCHAIN="$RUST_TOOLCHAIN"
+
 rust_toolchain_ready() {
   command -v rustc &>/dev/null && command -v cargo &>/dev/null || return 1
-  RUST_VERSION=$(cd "$REPO_ROOT/rust" && rustc --version 2>/dev/null) || return 1
-  (cd "$REPO_ROOT/rust" && cargo --version) &>/dev/null || return 1
+  RUST_VERSION=$(rustc --version 2>/dev/null) || return 1
+  cargo --version &>/dev/null || return 1
   version_at_least "$(echo "$RUST_VERSION" | cut -d' ' -f2)" "$RUST_TOOLCHAIN"
 }
 
@@ -164,8 +182,12 @@ if rust_toolchain_ready; then
 else
   warn "Rust $RUST_TOOLCHAIN or newer was not found — installing the pinned toolchain..."
   if command -v rustup &>/dev/null; then
-    rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+    # Explicit, single, minimal install. --no-self-update avoids an extra
+    # rustup download on top of the toolchain itself.
+    rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal --no-self-update
   else
+    # Bootstrap rustup itself (Linux/macOS/WSL2 only). Native Windows uses the
+    # verified PowerShell installer, not this script.
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
       | sh -s -- -y --profile minimal --default-toolchain "$RUST_TOOLCHAIN"
   fi
@@ -265,8 +287,8 @@ fi
 
 # ── 7. Install Python dependencies ──────────────────────────────────
 info "Installing Python dependencies..."
-uv sync --extra desktop --extra tools-search --quiet 2>/dev/null \
-  || uv sync --extra desktop --extra tools-search
+uv sync --locked --extra desktop --extra tools-search --quiet 2>/dev/null \
+  || uv sync --locked --extra desktop --extra tools-search
 ok "Python dependencies installed"
 
 # ── 7b. Build Rust extension ──────────────────────────────────────

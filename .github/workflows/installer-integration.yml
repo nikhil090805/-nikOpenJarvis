@@ -4,6 +4,12 @@ on:
   pull_request:
     paths:
       - 'scripts/install/**'
+      - 'deploy/windows/**'
+      - 'deploy/docker/**'
+      - 'rust/**'
+      - 'frontend/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
       - 'src/openjarvis/cli/**'
       - 'tests/install/**'
       - '.github/workflows/installer-integration.yml'
@@ -118,3 +124,117 @@ jobs:
           ~/.local/bin/jarvis-uninstall --yes
           test ! -d ~/.openjarvis
           test ! -L ~/.local/bin/jarvis
+
+  # Native Windows x64 coverage. Steps labelled MOCKED use command stubs and
+  # never install third-party software or register a real scheduled task.
+  # Steps labelled REAL are true integration checks on the Windows runner.
+  windows-x64:
+    name: Windows x64 (REAL build + MOCKED installer checks)
+    runs-on: windows-latest
+    env:
+      RUSTUP_AUTO_INSTALL: "0"
+      RUSTUP_TOOLCHAIN: "1.89.0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Use the reviewed npm toolchain
+        run: npm install --global npm@11.19.0
+
+      - name: REAL Rustup detection + Rust 1.89.0 minimal + MSVC target
+        shell: bash
+        run: |
+          rustup --version
+          rustup toolchain install 1.89.0 --profile minimal --no-self-update
+          rustup default 1.89.0
+          rustup target add --toolchain 1.89.0 x86_64-pc-windows-msvc
+          rustc --version
+          rustup show active-toolchain
+          rustup target list --installed --toolchain 1.89.0
+          rustup component list --installed --toolchain 1.89.0
+
+      - name: REAL MSVC linker / Windows SDK detection
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if (-not (Test-Path $vswhere)) { throw 'vswhere.exe not found on this runner' }
+          $linker = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find 'VC\Tools\MSVC\**\bin\Host*\*\link.exe'
+          if (-not $linker) { throw 'MSVC link.exe not found on this runner' }
+          Write-Host "MSVC linker: $linker"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      - name: MOCKED installer/service checks (PowerShell syntax, Rust stage, repo selection, failed download, argument validation)
+        shell: pwsh
+        run: |
+          ./tests/install/windows/Assert-WindowsInstaller.ps1 -RepoRoot (Get-Location).Path
+
+      - name: MOCKED Ollama prerequisite handling (stub on PATH, no download)
+        shell: pwsh
+        run: |
+          $stub = Join-Path $env:RUNNER_TEMP 'oj-ollama-stub'
+          New-Item -ItemType Directory -Path $stub -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $stub 'ollama.cmd') -Value "@echo off`r`nexit /b 0" -Encoding ASCII
+          $found = Get-Command ollama -ErrorAction SilentlyContinue
+          Write-Host "Pre-stub ollama: $found"
+          # The installer's Get-Command check is what the harness exercises;
+          # no real Ollama binary is installed or started in CI.
+          if (-not (Test-Path (Join-Path $stub 'ollama.cmd'))) { throw 'stub missing' }
+
+      - name: REAL uv dependency install + native extension compile/import + idempotency
+        shell: bash
+        run: |
+          uv sync --locked --extra desktop --group desktop-native
+          uv run python -c "import openjarvis_rust; print('openjarvis_rust import OK')"
+          uv sync --locked --extra desktop --group desktop-native
+          uv run python -c "import openjarvis_rust"
+
+      - name: REAL Python installer/toolchain regression tests
+        shell: bash
+        run: |
+          # REAL Python regression tests + MOCKED PowerShell prerequisite
+          # helpers (Get-PythonCommand / Test-MsvcLinker) and clone-branch tests.
+          uv run pytest \
+            tests/install/test_windows_remediation.py \
+            tests/install/test_windows_prerequisites.py \
+            tests/install/test_version_history.py \
+            tests/install/test_quickstart_prerequisites.py \
+            tests/deployment/test_docker.py -q
+
+      - name: REAL frontend dependency install + tests + production build
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: REAL Tauri Windows x64 desktop build
+        working-directory: frontend
+        run: npx tauri build --bundles nsis
+
+      - name: REAL backend startup and /health check
+        shell: bash
+        run: |
+          uv run jarvis serve --host 127.0.0.1 --port 8000 > "/tmp/openjarvis-serve.log" 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health; then
+              echo "backend health OK"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "backend did not become healthy"
+          cat "/tmp/openjarvis-serve.log"
+          exit 1

@@ -1,5 +1,20 @@
-# Pin the minimum toolchain supported by the workspace dependencies.
-# uuid 1.27 requires Rust 1.89.
+# Pin the exact toolchain required by the workspace (uuid 1.27 needs Rust 1.89).
+#
+# Use a FULLY QUALIFIED version. rustup treats the two-part name "1.89" as a
+# different toolchain from an installed "1.89.0"; a proxy invoked inside this
+# directory would then silently install a second toolchain and re-download
+# every component on Windows. "1.89.0" matches the workspace MSRV in
+# rust/Cargo.toml and the explicit installs in the installers/CI.
+#
+# "minimal" is deliberate: it installs only rustc, cargo and rust-std. It is
+# also rustup's own recommendation on Windows (see rustup's profiles docs),
+# because rust-docs/rustfmt/clippy add thousands of files that some antivirus
+# engines flag. Formatting and linting components are installed explicitly by
+# the CI/lint jobs and by `make lint`, never by an ordinary runtime install.
+#
+# Do NOT add a `targets` list here: a Windows-only target in this file would
+# force a cross-target std download on Linux and macOS too. The Windows
+# installer verifies/adds x86_64-pc-windows-msvc explicitly instead.
 [toolchain]
-channel = "1.89"
-components = ["rustfmt", "clippy"]
+channel = "1.89.0"
+profile = "minimal"
