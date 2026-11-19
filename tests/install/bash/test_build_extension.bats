@@ -6,6 +6,16 @@ setup() {
     mkdir -p "$OPENJARVIS_HOME/.state"
     mkdir -p "$OPENJARVIS_HOME/src/rust/crates/openjarvis-python"
     touch "$OPENJARVIS_HOME/src/rust/crates/openjarvis-python/Cargo.toml"
+    # build-extension.sh resolves the reviewed maturin version from uv.lock.
+    cat > "$OPENJARVIS_HOME/src/uv.lock" <<'EOF'
+version = 1
+requires-python = ">=3.11, <3.14"
+
+[[package]]
+name = "maturin"
+version = "1.16.0"
+source = { registry = "https://pypi.org/simple" }
+EOF
     export UV_STUB_LOG="$TEST_TMPDIR/uv.log"
     : > "$UV_STUB_LOG"
     export PYTHON_STUB_LOG="$TEST_TMPDIR/python.log"
@@ -54,7 +64,7 @@ teardown() {
     UV_STUB_EXIT=0 run bash "$SCRIPT"
     [ "$status" -eq 0 ]
     grep -Fx "VIRTUAL_ENV=$OPENJARVIS_HOME/.venv" "$UV_STUB_LOG"
-    grep -Fx "maturin develop --uv -m $OPENJARVIS_HOME/src/rust/crates/openjarvis-python/Cargo.toml" "$UV_STUB_LOG"
+    grep -Fx -- "--from maturin==1.16.0 maturin develop --uv -m $OPENJARVIS_HOME/src/rust/crates/openjarvis-python/Cargo.toml" "$UV_STUB_LOG"
     grep -Fx "$OPENJARVIS_HOME/.venv/bin/python -c import openjarvis_rust" "$PYTHON_STUB_LOG"
     [ ! -d "$OPENJARVIS_HOME/src/.venv" ]
 }

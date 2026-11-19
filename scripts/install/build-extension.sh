@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# build-extension.sh — build the Rust maturin extension into the venv.
+# build-extension.sh — build the Rust maturin extension into the runtime venv.
 #
 # State files under $OPENJARVIS_HOME/.state/:
 #   extension-built   — atomic marker written on success
 #   extension-failed  — written on failure with stderr tail
 #   extension-build.log — captured stderr/stdout
+#
+# The toolchain and build backend are both pinned: RUSTUP_TOOLCHAIN=1.89.0
+# (from rust/rust-toolchain.toml) and the exact maturin version from uv.lock.
+# RUSTUP_AUTO_INSTALL=0 means no cargo/rustc proxy can trigger an implicit
+# toolchain or component download while this script runs.
 
 set -euo pipefail
 
@@ -13,6 +18,8 @@ OPENJARVIS_HOME="${OPENJARVIS_HOME:-$HOME/.openjarvis}"
 # and install.sh installs uv to ~/.local/bin, but neither export propagates
 # to subsequent subprocess invocations.
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+export RUSTUP_AUTO_INSTALL=0
+export RUSTUP_TOOLCHAIN="1.89.0"
 SRC_DIR="$OPENJARVIS_HOME/src"
 # The venv the runtime actually uses. jarvis-wrapper.sh execs
 # "$OPENJARVIS_HOME/.venv/bin/jarvis", so this — not a venv that `uv run`
@@ -23,6 +30,7 @@ LOG="$STATE_DIR/extension-build.log"
 BUILT="$STATE_DIR/extension-built"
 FAILED="$STATE_DIR/extension-failed"
 MANIFEST="$SRC_DIR/rust/crates/openjarvis-python/Cargo.toml"
+LOCKFILE="$SRC_DIR/uv.lock"
 
 mkdir -p "$STATE_DIR"
 
@@ -38,12 +46,27 @@ if [[ ! -x "$VENV_DIR/bin/python" ]]; then
     exit 1
 fi
 
+# Resolve the reviewed/locked maturin version instead of letting `uvx` fetch
+# whatever is newest. No hash is hardcoded: uv.lock carries PyPI hashes.
+MATURIN_VERSION=$(awk '
+    /^\[\[package\]\]/ { name=""; version="" }
+    /^name = "/ { name=$3; gsub(/"/, "", name) }
+    /^version = "/ { version=$3; gsub(/"/, "", version) }
+    name=="maturin" && version!="" { print version; exit }
+' "$LOCKFILE" 2>/dev/null || true)
+
+if [[ -z "$MATURIN_VERSION" ]]; then
+    echo "build-extension.sh: could not read the locked maturin version from $LOCKFILE" > "$FAILED"
+    rm -f "$BUILT"
+    exit 1
+fi
+
 cd "$SRC_DIR"
 # `uv run` resolves its environment from the cwd, which creates and targets
 # $SRC_DIR/.venv — a venv nothing runs from. Point maturin at the runtime
 # venv explicitly instead. `--uv` is required because that venv is a uv venv
 # with no pip; without it maturin fails with "Failed to find pip".
-if VIRTUAL_ENV="$VENV_DIR" uvx maturin develop --uv -m "$MANIFEST" >>"$LOG" 2>&1; then
+if VIRTUAL_ENV="$VENV_DIR" uvx --from "maturin==${MATURIN_VERSION}" maturin develop --uv -m "$MANIFEST" >>"$LOG" 2>&1; then
     # Verify the extension actually imports from THIS venv before declaring
     # success. `maturin develop` can report success while installing the .so
     # into a different venv than the one that runs the server, which leaves

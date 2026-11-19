@@ -1,7 +1,7 @@
 # Linux Install
 
 ```bash
-curl -fsSL https://open-jarvis.github.io/OpenJarvis/install.sh | bash
+git clone https://github.com/nikhil090805/-nikOpenJarvis.git && cd -nikOpenJarvis && bash scripts/install/install.sh
 ```
 
 Tested on: Ubuntu 22.04 / 24.04, Fedora 40, Debian 12, Arch.

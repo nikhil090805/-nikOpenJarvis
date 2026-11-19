@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import type React from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { getSetupStatus } from '../../lib/api';
+import { isBackendStarting } from '../../lib/setupStatus';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -216,6 +218,7 @@ function formatUptime(seconds: number): string {
 
 export function AdminPanel({ apiUrl }: { apiUrl: string }) {
   const [healthy, setHealthy] = useState<boolean | null>(null);
+  const [starting, setStarting] = useState(false);
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -224,6 +227,11 @@ export function AdminPanel({ apiUrl }: { apiUrl: string }) {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
+    // The desktop backend reports setup phases before /health is reachable.
+    // While it is starting, a failed probe is expected, not an offline server.
+    const setup = await getSetupStatus();
+    const backendStarting = isBackendStarting(setup);
+    setStarting(backendStarting);
     try {
       // Check health
       const healthResult = await invoke<HealthStatus>('check_health', { apiUrl });
@@ -255,8 +263,15 @@ export function AdminPanel({ apiUrl }: { apiUrl: string }) {
 
       setError(null);
     } catch (err) {
-      setHealthy(false);
-      setError(err instanceof Error ? err.message : String(err));
+      if (backendStarting) {
+        // Still starting: keep the status unknown rather than claiming the
+        // backend is offline. The 15s poll will refresh once /health is up.
+        setHealthy(null);
+        setError(null);
+      } else {
+        setHealthy(false);
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setLoading(false);
     }
@@ -317,7 +332,11 @@ export function AdminPanel({ apiUrl }: { apiUrl: string }) {
         : styles.healthDotUnhealthy;
 
   const healthLabel =
-    healthy === null ? 'Unknown' : healthy ? 'Healthy' : 'Unhealthy';
+    healthy === null
+      ? (starting ? 'Starting...' : 'Unknown')
+      : healthy
+        ? 'Healthy'
+        : 'Unhealthy';
 
   return (
     <div style={styles.container}>

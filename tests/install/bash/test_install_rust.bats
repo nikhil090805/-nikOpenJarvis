@@ -29,7 +29,13 @@ teardown() {
     [ ! -s "$CURL_STUB_LOG" ]
 }
 
-@test "runs rustup curl-pipe-bash when cargo is missing" {
+@test "installs the pinned minimal toolchain when cargo is missing" {
     PATH="$STUBS_NO_CARGO:/usr/bin:/bin:/usr/local/bin" run bash "$SCRIPT"
-    grep -q "sh.rustup.rs" "$CURL_STUB_LOG"
+    # The rustup stub does not actually provide cargo, so the script must
+    # report the still-missing prerequisite instead of claiming success.
+    [ "$status" -eq 1 ]
+    grep -q "toolchain install 1.89.0 --profile minimal --no-self-update" "$RUSTUP_STUB_LOG"
+    grep -q "default 1.89.0" "$RUSTUP_STUB_LOG"
+    # An existing rustup must NOT fall back to an unpinned curl-pipe-bash.
+    [ ! -s "$CURL_STUB_LOG" ]
 }

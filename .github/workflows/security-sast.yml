@@ -66,6 +66,9 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      # Deliberate exception: cargo-deny 0.21.0 requires a newer compiler than
+      # the 1.89.0 runtime MSRV. All runtime builds and installers are pinned
+      # to 1.89.0 --profile minimal; this audit-only job keeps its own toolchain.
       - uses: dtolnay/rust-toolchain@1.97.0
       - uses: actions/cache@v6
         with:
