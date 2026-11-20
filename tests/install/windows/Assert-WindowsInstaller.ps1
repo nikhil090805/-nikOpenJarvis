@@ -246,3 +246,12 @@ Write-Host '[ok] scheduled-task argument validation (mocked + parameter binding)
 
 Write-Host ""
 Write-Host "ALL WINDOWS INSTALLER CHECKS PASSED ($($script:Passed) assertions)" -ForegroundColor Green
+
+# The negative parameter-binding checks above deliberately run child
+# PowerShell processes that exit non-zero. GitHub's pwsh wrapper ends the step
+# with `exit $LASTEXITCODE`, so without resetting it a fully passing harness
+# still reported "Process completed with exit code 1" (the failure was masked
+# earlier by the installer parse error). A real assertion failure throws and
+# still fails the step.
+$global:LASTEXITCODE = 0
+exit 0
