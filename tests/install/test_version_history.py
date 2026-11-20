@@ -70,7 +70,7 @@ def _installer_clone(installer, source, clone, cwd, *, env_extra=None):
     }
     env.update(env_extra or {})
     if kind == "bash":
-        script = (ROOT / "scripts/install/install.sh").read_text()
+        script = (ROOT / "scripts/install/install.sh").read_text(encoding="utf-8")
         start = script.index("clone_repo() {\n")
         end = script.index("\n}\n", start) + 2
         command = [
@@ -79,7 +79,7 @@ def _installer_clone(installer, source, clone, cwd, *, env_extra=None):
             "set -euo pipefail\n" + script[start:end] + "\nclone_repo",
         ]
     else:
-        script = (ROOT / "deploy/windows/install.ps1").read_text()
+        script = (ROOT / "deploy/windows/install.ps1").read_text(encoding="utf-8")
         start = script.index("    if ($repoUrl -like 'file://*'")
         end = script.index("    if ($LASTEXITCODE", start)
         body = (
@@ -158,7 +158,9 @@ def test_installer_clones_shallow_local_source_without_lazy_fetch_recursion(
     assert "filtering not recognized" not in completed.stderr
     assert "unable to fork" not in completed.stderr
     assert "shallow roots" not in completed.stderr
-    events = [json.loads(line) for line in trace_path.read_text().splitlines()]
+    events = [
+        json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()
+    ]
     upload_packs = [
         event
         for event in events
@@ -172,7 +174,7 @@ def test_installer_clones_shallow_local_source_without_lazy_fetch_recursion(
     assert _git(clone, "rev-list", "--all", "--count") == _git(
         source_repo, "rev-list", "--all", "--count"
     )
-    assert (clone / "README.md").read_text() == "release\n"
+    assert (clone / "README.md").read_text(encoding="utf-8") == "release\n"
     config = _git(clone, "config", "--local", "--list")
     assert "promisor" not in config
     assert "partialclone" not in config.lower()
@@ -217,7 +219,7 @@ def test_update_recovers_version_before_reinstall_and_preserves_user_files(
     assert _update_git_checkout(clone) == 0
     assert _git(clone, "rev-parse", "--is-shallow-repository") == "false"
     assert _git(clone, "rev-parse", "HEAD") == head
-    assert user_file.read_text() == "preserve this\n"
+    assert user_file.read_text(encoding="utf-8") == "preserve this\n"
     assert len(rebuild_versions) == 1
     assert rebuild_versions[0].startswith("v1.0.3-1-g")
 
@@ -242,4 +244,4 @@ def test_update_does_not_merge_or_reinstall_diverged_checkout(
     monkeypatch.setattr("openjarvis.cli.self_update_cmd.subprocess.run", run)
     assert _update_git_checkout(clone) != 0
     assert _git(clone, "rev-parse", "HEAD") == original_head
-    assert (clone / "local.txt").read_text() == "local work\n"
+    assert (clone / "local.txt").read_text(encoding="utf-8") == "local work\n"

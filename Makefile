@@ -6,7 +6,7 @@ setup:
 	uv sync --extra dev --extra framework-comparison --extra server
 
 build:
-	RUSTUP_AUTO_INSTALL=0 RUSTUP_TOOLCHAIN=1.89.0 uv run maturin develop --manifest-path rust/crates/openjarvis-python/Cargo.toml
+	RUSTUP_AUTO_INSTALL=0 RUSTUP_TOOLCHAIN=1.90.0 uv run maturin develop --manifest-path rust/crates/openjarvis-python/Cargo.toml
 
 test: build
 	uv run pytest tests/ -n auto -q --tb=short -m "not live and not cloud and not hub"

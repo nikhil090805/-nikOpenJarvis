@@ -18,7 +18,7 @@
           $env:LOCALAPPDATA\OpenJarvis, or reuse -SourceDir. Existing
           checkouts are verified, never blindly pulled or overwritten.
       5b. Check the MSVC linker and Windows SDK.
-      5c. Install/verify the pinned Rust 1.89.0 toolchain with --profile
+      5c. Install/verify the pinned Rust 1.90.0 toolchain with --profile
           minimal and the x86_64-pc-windows-msvc target, with Rustup proxy
           auto-installation disabled.
       6.  Run `uv sync --locked --extra desktop --group desktop-native` and
@@ -72,9 +72,9 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # Pinned, fully qualified toolchain. Keep in sync with rust/rust-toolchain.toml
-# and rust/Cargo.toml. A two-part name ("1.89") is a DIFFERENT rustup
-# toolchain from "1.89.0" and caused repeated six-component downloads.
-$script:PinnedRustVersion = '1.89.0'
+# and rust/Cargo.toml. A two-part name ("1.90") is a DIFFERENT rustup
+# toolchain from "1.90.0" and caused repeated six-component downloads.
+$script:PinnedRustVersion = '1.90.0'
 $script:RustHostTarget    = 'x86_64-pc-windows-msvc'
 # This fork, not upstream. Override with $env:OPENJARVIS_REPO_URL.
 $script:DefaultRepoUrl    = 'https://github.com/nikhil090805/-nikOpenJarvis.git'
@@ -496,7 +496,10 @@ if (Test-Path (Join-Path $srcDir '.git')) {
     if ($Force) {
         $dirty = @(& $gitExe -C $srcDir status --porcelain 2>$null)
         if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) {
-            Write-Fail "Refusing to update $srcDir: uncommitted changes present. Commit or stash them, then re-run with -Force."
+            # ${srcDir} must stay braced: "$srcDir:" is parsed by PowerShell as
+            # a drive-qualified variable reference (InvalidVariableReferenceWithDrive)
+            # and makes the whole script fail to parse.
+            Write-Fail "Refusing to update ${srcDir}: uncommitted changes present. Commit or stash them, then re-run with -Force."
         }
         Write-Info "Force: pulling latest from $repoUrl..."
         & $gitExe -C $srcDir pull --ff-only
@@ -509,7 +512,15 @@ if (Test-Path (Join-Path $srcDir '.git')) {
     # Preserve history without partial-clone lazy fetches from local sources,
     # which may themselves be shallow. Remote sources can omit old blobs.
     if ($repoUrl -like 'file://*' -or (Test-Path -LiteralPath $repoUrl -ErrorAction SilentlyContinue)) {
-        & $gitExe clone $repoUrl $srcDir
+        # A file:// URL still goes through git's upload-pack transport, which
+        # refuses to serve a shallow source repository ("attempt to fetch/clone
+        # from a shallow repository") and cannot satisfy a partial clone's lazy
+        # fetches. Hand git the plain filesystem path instead, so a local source
+        # (shallow or not, and with spaces or brackets in its path) always
+        # clones through the local transport. Remote URLs are unaffected.
+        $localSource = $repoUrl
+        if ($repoUrl -like 'file://*') { $localSource = ([uri]$repoUrl).LocalPath }
+        & $gitExe clone $localSource $srcDir
     } else {
         & $gitExe clone --filter=blob:none $repoUrl $srcDir
     }
@@ -530,8 +541,8 @@ if (Test-Path (Join-Path $srcDir '.git')) {
 # but its PEP 517 build backend pulls in `puccinialin`, which WILL download and
 # run rustup-init into a temp dir when no cargo is found. That produces an
 # unmanaged, unpinned toolchain and can trigger repeated component downloads.
-# Step 5c therefore provides cargo/rustc through the pinned 1.89.0 minimal
-# toolchain FIRST, then sets RUSTUP_TOOLCHAIN=1.89.0 and RUSTUP_AUTO_INSTALL=0,
+# Step 5c therefore provides cargo/rustc through the pinned 1.90.0 minimal
+# toolchain FIRST, then sets RUSTUP_TOOLCHAIN=1.90.0 and RUSTUP_AUTO_INSTALL=0,
 # so neither rustup proxies nor the build backend bootstrap anything. The
 # x86_64-pc-windows-msvc target also needs the MSVC linker, which no earlier
 # step installs (#1060).
@@ -642,7 +653,7 @@ function Test-PinnedRustToolchain {
         if ($LASTEXITCODE -ne 0) { return $false }
         & $RustupExe run $script:PinnedRustVersion cargo --version 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0) { return $false }
-        if (-not ($rustcOut -match '1\.89\.0')) { return $false }
+        if (-not ($rustcOut -match '1\.90\.0')) { return $false }
         return $true
     } catch {
         return $false
@@ -690,7 +701,7 @@ download or execute an unverified rustup-init binary.
     if ($rustcCmd) { Write-Info "  rustc ($($rustcCmd.Source))" } else { Write-Info "  rustc: proxy not on PATH yet" }
     if ($cargoCmd) { Write-Info "  cargo ($($cargoCmd.Source))" } else { Write-Info "  cargo: proxy not on PATH yet" }
 
-    $registered = @(& $rustupExe toolchain list 2>$null) | Where-Object { $_ -match '^1\.89\.0' }
+    $registered = @(& $rustupExe toolchain list 2>$null) | Where-Object { $_ -match '^1\.90\.0' }
 
     if (-not (Test-PinnedRustToolchain $rustupExe)) {
         if ($registered) {
@@ -710,10 +721,10 @@ component download was quarantined by Windows Defender). Safe recovery:
 
   1. Review Windows Security -> Protection history. Do NOT restore the
      quarantined file, add an exclusion, or disable Defender.
-  2. Verify the detection against the official Rust 1.89.0 checksums and
+  2. Verify the detection against the official Rust 1.90.0 checksums and
      signatures (see deploy/windows/README.md).
   3. Remove ONLY the incomplete toolchain:
-        rustup toolchain uninstall 1.89.0
+        rustup toolchain uninstall 1.90.0
   4. Re-run this installer.
 "@
         }
@@ -865,11 +876,15 @@ if (-not (Test-Path $binDir)) {
 # break it as long as the user moves the whole tree. `uv` is resolved
 # from PATH at runtime (astral installer adds it to User PATH); avoids
 # pinning to the install-time uv.exe path which can shift on uv updates.
+# The extras and the native-extension group are spelled out so `uv run` can
+# never re-sync the environment down to the bare default set and drop what the
+# installer just built (uvicorn/fastapi from the desktop extra, the maturin
+# build from the desktop-native group, the cloud provider SDKs).
 $shimContent = @"
 @echo off
 setlocal
 set "SRC=%~dp0..\src"
-uv run --project "%SRC%" jarvis %*
+uv run --locked --project "%SRC%" --extra desktop --extra inference-cloud --extra inference-google --group desktop-native jarvis %*
 "@
 Set-Content -Path $shimPath -Value $shimContent -Encoding ASCII
 

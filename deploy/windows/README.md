@@ -14,13 +14,20 @@ Docker, MSYS2/Git Bash, or a browser-only substitute.
 | Python | 3.11, 3.12 or 3.13 (3.14 is rejected: no numpy wheels) |
 | Git | on `PATH` (auto-installed via winget if missing) |
 | uv | auto-installed via winget (`astral-sh.uv`) or a SHA-256-verified pinned release |
-| Rust | **1.89.0**, `minimal` profile, target `x86_64-pc-windows-msvc` |
+| Rust | **1.90.0**, `minimal` profile, target `x86_64-pc-windows-msvc` |
 | MSVC | Visual Studio 2022 Build Tools with **Desktop development with C++** (MSVC linker + Windows SDK) |
 | Node.js (desktop build from source only) | `>=22.22`, npm `>=11.19.0 <12` (`npm@11.19.0` is the reviewed pin) |
 | Ollama | installed via winget (`Ollama.Ollama`) or a signature-verified direct download |
 
+Rust 1.90.0 is the real floor: the Tauri 2.12 desktop stack pinned in
+`frontend/src-tauri/Cargo.lock` (`tauri-utils`, `tauri-runtime`,
+`tauri-runtime-wry`, `muda`, `tray-icon`, `tauri-plugin-*`) declares
+`rust-version = "1.90"`. 1.89 cannot build OpenJarvis Desktop, so the backend
+workspace, Docker images, installers and CI all pin the same fully qualified
+`1.90.0` with `--profile minimal` (no rustfmt/clippy at install time).
+
 Windows ARM64 is still supported by the desktop app through x64 emulation
-(see `docs/getting-started/windows-native.md`); the pinned 1.89.0 MSRV override
+(see `docs/getting-started/windows-native.md`); the pinned 1.90.0 MSRV override
 on that platform is intentional and documented.
 
 ---
@@ -63,9 +70,9 @@ Environment equivalents (for non-interactive shells):
    a mismatched `origin` or uncommitted changes cause a clear failure.
 6. Verifies the MSVC `link.exe` (via `vswhere`) and Windows SDK headers.
 7. **Rust stage**: explicitly detects `rustup`, `rustc`, `cargo`; reports the
-   active toolchain; installs `1.89.0` with `--profile minimal` only when the
+   active toolchain; installs `1.90.0` with `--profile minimal` only when the
    pinned toolchain is not healthy; verifies/adds `x86_64-pc-windows-msvc`;
-   sets `RUSTUP_TOOLCHAIN=1.89.0` and `RUSTUP_AUTO_INSTALL=0` for the build.
+   sets `RUSTUP_TOOLCHAIN=1.90.0` and `RUSTUP_AUTO_INSTALL=0` for the build.
 8. Runs `uv sync --locked --extra desktop --group desktop-native`, then
    **verifies `import openjarvis_rust`** before reporting success.
 9. Installs/verifies Ollama (winget first, signature-verified download fallback),
@@ -85,6 +92,20 @@ jarvis serve            # or let the desktop app start it for you
 ```
 
 Then open <http://127.0.0.1:8000/health> — it must return a healthy response.
+
+The `jarvis` shim runs the environment the installer built, so it is worth
+knowing its exact form:
+
+```text
+uv run --locked --project %LOCALAPPDATA%\OpenJarvis\src ^
+  --extra desktop --extra inference-cloud --extra inference-google ^
+  --group desktop-native jarvis %*
+```
+
+Spelling out the extras and the `desktop-native` group keeps `uv` from
+re-syncing the environment down to the bare defaults and dropping `uvicorn`/
+`fastapi`, the compiled `openjarvis_rust` module, or the cloud provider SDKs.
+If you invoke `uv run` yourself, pass the same flags.
 
 ---
 
@@ -184,7 +205,7 @@ npx tauri build --bundles nsis
 
 The NSIS installer is written to
 `frontend\src-tauri\target\release\bundle\nsis\`. The desktop app requires
-Rust 1.89.0 (already provisioned by `install.ps1`) and the MSVC Build Tools.
+Rust 1.90.0 (already provisioned by `install.ps1`) and the MSVC Build Tools.
 Windows CI builds this exact path on `windows-latest` (see
 `.github/workflows/installer-integration.yml`, `windows-x64` job).
 
@@ -200,11 +221,13 @@ If Defender reports `Trojan:Win32/Suschil!rfn` on a file under
 2. Record the detection from Windows Security → Protection history (file path,
    reported SHA-256, detection name/signature version).
 3. The download cache name is the **expected SHA-256** of a Rust component.
-   For Rust 1.89.0 / `x86_64-pc-windows-msvc`, the official manifest is
-   <https://static.rust-lang.org/dist/channel-rust-1.89.0.toml>; the official
-   `rustfmt` component sidecar is
-   <https://static.rust-lang.org/dist/2025-08-07/rustfmt-1.89.0-x86_64-pc-windows-msvc.tar.xz.sha256>
-   and its PGP signature is the same URL with `.asc`. The manifest itself has
+   For Rust 1.90.0 / `x86_64-pc-windows-msvc`, the official manifest is
+   <https://static.rust-lang.org/dist/channel-rust-1.90.0.toml>. That manifest
+   records the release `date` and the per-component `xz_hash` values; the
+   dated `rustfmt` sidecars live under
+   `https://static.rust-lang.org/dist/<date>/rustfmt-1.90.0-x86_64-pc-windows-msvc.tar.xz.sha256`
+   (same URL plus `.asc` for the PGP signature). Read `<date>` from the
+   manifest instead of guessing it. The manifest itself has
    `.sha256` and `.asc` sidecars, and the signing key is at
    <https://static.rust-lang.org/rust-key.gpg.ascii>.
 4. On a clean machine, download the artifact + `.sha256` + `.asc`, verify the
@@ -215,10 +238,21 @@ If Defender reports `Trojan:Win32/Suschil!rfn` on a file under
    is a false positive** — only Microsoft's determination plus a matching
    hash/signature establishes that.
 6. If a toolchain is left partially installed, remove only that toolchain
-   (`rustup toolchain uninstall 1.89.0`) and re-run the installer. Never
+   (`rustup toolchain uninstall 1.90.0`) and re-run the installer. Never
    restore a quarantined file.
 
 ---
+
+## Prebuilt NSIS installer from CI
+
+Every Windows installer-integration run builds and asserts the real NSIS
+installer and uploads it, so a machine without a full build toolchain can still
+install the desktop app:
+
+<https://github.com/nikhil090805/-nikOpenJarvis/actions/workflows/installer-integration.yml>
+→ newest green `Windows x64 (REAL build + MOCKED installer checks)` run →
+artifact **`OpenJarvis-Windows-x64-NSIS`** (`*_x64-setup.exe` +
+`openjarvis-desktop.exe`; SHA-256 printed in the job log, 14-day retention).
 
 ## Troubleshooting
 
@@ -228,7 +262,7 @@ If Defender reports `Trojan:Win32/Suschil!rfn` on a file under
 | `MSVC build tools not found` | Install VS 2022 Build Tools with the C++ workload (`winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --quiet --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`). |
 | Windows SDK warning | Install the Windows 11 SDK component if linking fails with missing Windows libraries. |
 | `uv sync failed` | Read the printed output; the installer never reports success without a working `import openjarvis_rust`. |
-| `openjarvis_rust` import fails | Re-run `uv sync --locked --extra desktop --group desktop-native` in the source dir and check the pinned 1.89.0 toolchain with `rustup show`. |
+| `openjarvis_rust` import fails | Re-run `uv sync --locked --extra desktop --group desktop-native` in the source dir and check the pinned 1.90.0 toolchain with `rustup show`. |
 | Partial Rust toolchain after a Defender quarantine | See the Defender section above. Rustup makes **one** repair attempt and then fails with instructions; it never loops downloading. |
 | `jarvis` not found | Open a new PowerShell so the User PATH change takes effect. |
 | Desktop says backend offline | Wait for startup; the Admin Panel shows "Starting..." until `/health` responds. Check `jarvis doctor`. |

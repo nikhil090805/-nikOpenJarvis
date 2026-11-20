@@ -6,7 +6,7 @@
 #   extension-failed  — written on failure with stderr tail
 #   extension-build.log — captured stderr/stdout
 #
-# The toolchain and build backend are both pinned: RUSTUP_TOOLCHAIN=1.89.0
+# The toolchain and build backend are both pinned: RUSTUP_TOOLCHAIN=1.90.0
 # (from rust/rust-toolchain.toml) and the exact maturin version from uv.lock.
 # RUSTUP_AUTO_INSTALL=0 means no cargo/rustc proxy can trigger an implicit
 # toolchain or component download while this script runs.
@@ -19,7 +19,7 @@ OPENJARVIS_HOME="${OPENJARVIS_HOME:-$HOME/.openjarvis}"
 # to subsequent subprocess invocations.
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
 export RUSTUP_AUTO_INSTALL=0
-export RUSTUP_TOOLCHAIN="1.89.0"
+export RUSTUP_TOOLCHAIN="1.90.0"
 SRC_DIR="$OPENJARVIS_HOME/src"
 # The venv the runtime actually uses. jarvis-wrapper.sh execs
 # "$OPENJARVIS_HOME/.venv/bin/jarvis", so this — not a venv that `uv run`

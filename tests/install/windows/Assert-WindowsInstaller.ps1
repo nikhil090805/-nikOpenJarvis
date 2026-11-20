@@ -63,7 +63,7 @@ foreach ($path in @($installerPath, $servicePath)) {
 # ---------------------------------------------------------------------------
 Assert-Contains 'https://github.com/nikhil090805/-nikOpenJarvis.git' 'installer must default to this fork'
 Assert-True (-not $installerText.Contains("'https://github.com/open-jarvis/OpenJarvis.git'")) 'installer must not default to upstream'
-Assert-Contains "PinnedRustVersion = '1.89.0'" 'fully qualified Rust pin'
+Assert-Contains "PinnedRustVersion = '1.90.0'" 'fully qualified Rust pin'
 Assert-Contains '--profile minimal' 'minimal Rust profile'
 Assert-Contains 'RUSTUP_AUTO_INSTALL' 'proxy auto-install must be disabled'
 Assert-Contains 'RUSTUP_TOOLCHAIN' 'explicit toolchain selection'
@@ -115,8 +115,15 @@ foreach ($ast in @($installerAst, $serviceAst)) {
     foreach ($def in $defs) { Invoke-Expression $def.Extent.Text }
 }
 
-$script:PinnedRustVersion = '1.89.0'
+$script:PinnedRustVersion = '1.90.0'
 $script:RustHostTarget = 'x86_64-pc-windows-msvc'
+# Read the uv pin out of the installer instead of duplicating the literal, so
+# the harness cannot drift from the shipped script. Under
+# Set-StrictMode -Version Latest an unset $script: variable is a fatal error,
+# which is how this gap surfaced once the parse bug stopped masking it.
+$uvPinMatch = [regex]::Match($installerText, "UvVersion\s*=\s*'([^']+)'")
+Assert-True $uvPinMatch.Success 'installer pins an explicit uv version'
+$script:UvVersion = $uvPinMatch.Groups[1].Value
 $env:RUSTUP_AUTO_INSTALL = '0'
 
 function Write-Info  { param($msg) }
@@ -147,7 +154,7 @@ $mockRustup = Join-Path $mockDir 'rustup.cmd'
 $mockRustupContent = @"
 @echo off
 echo %* >> "$mockLog"
-echo 1.89.0-x86_64-pc-windows-msvc
+echo 1.90.0-x86_64-pc-windows-msvc
 echo x86_64-pc-windows-msvc
 exit /b 0
 "@
@@ -162,9 +169,9 @@ try {
     Assert-RustToolchain
     $calls = @(Get-Content -LiteralPath $mockLog -ErrorAction SilentlyContinue)
     Assert-True (-not ($calls -match 'toolchain install')) 'healthy pinned toolchain must not be re-downloaded'
-    Assert-True ($env:RUSTUP_TOOLCHAIN -eq '1.89.0') 'explicit toolchain selected for the build'
+    Assert-True ($env:RUSTUP_TOOLCHAIN -eq '1.90.0') 'explicit toolchain selected for the build'
     Assert-True ($env:RUSTUP_AUTO_INSTALL -eq '0') 'auto-install disabled for the build'
-    Write-Host '[ok] Rust 1.89.0 minimal: healthy path performs no download (mocked)'
+    Write-Host '[ok] Rust 1.90.0 minimal: healthy path performs no download (mocked)'
 } finally {
     Remove-Item -LiteralPath $mockDir -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -177,7 +184,7 @@ $mockRustup2 = Join-Path $mockDir2 'rustup.cmd'
 $mockRustupContent2 = @"
 @echo off
 echo %* >> "$mockLog2"
-echo 1.89.0-x86_64-pc-windows-msvc
+echo 1.90.0-x86_64-pc-windows-msvc
 exit /b 0
 "@
 Set-Content -LiteralPath $mockRustup2 -Value $mockRustupContent2 -Encoding ASCII
@@ -239,3 +246,12 @@ Write-Host '[ok] scheduled-task argument validation (mocked + parameter binding)
 
 Write-Host ""
 Write-Host "ALL WINDOWS INSTALLER CHECKS PASSED ($($script:Passed) assertions)" -ForegroundColor Green
+
+# The negative parameter-binding checks above deliberately run child
+# PowerShell processes that exit non-zero. GitHub's pwsh wrapper ends the step
+# with `exit $LASTEXITCODE`, so without resetting it a fully passing harness
+# still reported "Process completed with exit code 1" (the failure was masked
+# earlier by the installer parse error). A real assertion failure throws and
+# still fails the step.
+$global:LASTEXITCODE = 0
+exit 0

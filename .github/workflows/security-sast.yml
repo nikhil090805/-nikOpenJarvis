@@ -67,8 +67,8 @@ jobs:
         with:
           python-version: "3.12"
       # Deliberate exception: cargo-deny 0.21.0 requires a newer compiler than
-      # the 1.89.0 runtime MSRV. All runtime builds and installers are pinned
-      # to 1.89.0 --profile minimal; this audit-only job keeps its own toolchain.
+      # the 1.90.0 runtime MSRV. All runtime builds and installers are pinned
+      # to 1.90.0 --profile minimal; this audit-only job keeps its own toolchain.
       - uses: dtolnay/rust-toolchain@1.97.0
       - uses: actions/cache@v6
         with:
@@ -93,9 +93,24 @@ jobs:
         env:
           MANIFEST: ${{ matrix.manifest }}
         run: |
+          # cargo deny writes its findings to stderr, which the previous
+          # version of this step sent straight into an uploaded artifact. When
+          # the check failed, the logs only said "exit code 1" and the reason
+          # was invisible without downloading the artifact. Echo the real
+          # diagnostics into the log on failure (the artifact is still
+          # uploaded) and preserve the original exit status.
+          status=0
           cargo deny --manifest-path "$MANIFEST" --config "$RUNNER_TEMP/deny.toml" \
             --locked --format json check --audit-compatible-output advisories sources \
-            > rust-advisories.json 2> rust-advisories-diagnostics.jsonl
+            > rust-advisories.json 2> rust-advisories-diagnostics.jsonl || status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "::error::cargo deny rejected $MANIFEST (exit $status)"
+            echo '--- cargo deny diagnostics (stderr) ---'
+            cat rust-advisories-diagnostics.jsonl 2>/dev/null || true
+            echo '--- cargo deny report (stdout) ---'
+            cat rust-advisories.json 2>/dev/null || true
+          fi
+          exit "$status"
       - name: Upload audit report
         if: always()
         uses: actions/upload-artifact@v7

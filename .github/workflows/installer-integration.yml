@@ -133,7 +133,7 @@ jobs:
     runs-on: windows-latest
     env:
       RUSTUP_AUTO_INSTALL: "0"
-      RUSTUP_TOOLCHAIN: "1.89.0"
+      RUSTUP_TOOLCHAIN: "1.90.0"
     steps:
       - uses: actions/checkout@v7
 
@@ -150,17 +150,17 @@ jobs:
       - name: Use the reviewed npm toolchain
         run: npm install --global npm@11.19.0
 
-      - name: REAL Rustup detection + Rust 1.89.0 minimal + MSVC target
+      - name: REAL Rustup detection + Rust 1.90.0 minimal + MSVC target
         shell: bash
         run: |
           rustup --version
-          rustup toolchain install 1.89.0 --profile minimal --no-self-update
-          rustup default 1.89.0
-          rustup target add --toolchain 1.89.0 x86_64-pc-windows-msvc
+          rustup toolchain install 1.90.0 --profile minimal --no-self-update
+          rustup default 1.90.0
+          rustup target add --toolchain 1.90.0 x86_64-pc-windows-msvc
           rustc --version
           rustup show active-toolchain
-          rustup target list --installed --toolchain 1.89.0
-          rustup component list --installed --toolchain 1.89.0
+          rustup target list --installed --toolchain 1.90.0
+          rustup component list --installed --toolchain 1.90.0
 
       - name: REAL MSVC linker / Windows SDK detection
         shell: pwsh
@@ -201,11 +201,61 @@ jobs:
           uv sync --locked --extra desktop --group desktop-native
           uv run python -c "import openjarvis_rust"
 
+      - name: REAL install.ps1 end-to-end, twice (idempotency; real Ollama install)
+        shell: pwsh
+        env:
+          OPENJARVIS_HOME: ${{ runner.temp }}\OpenJarvis
+          OPENJARVIS_REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # This runs the REAL installer, not a copy of its logic, and it does
+          # NOT stub Ollama: install.ps1 refreshes PATH from the registry, so a
+          # PATH-only stub is discarded and the installer takes its real
+          # winget/direct-download branch and pulls the starter model. The
+          # second run must then find Ollama and the model already present,
+          # which is exactly the idempotency asserted below. Only the Windows
+          # service/task is skipped (-SkipService).
+
+          $installer = Join-Path (Get-Location).Path 'deploy\windows\install.ps1'
+          $sourceDir = (Get-Location).Path
+
+          Write-Host '=== install.ps1: first run (REAL) ==='
+          $first = & $installer -SourceDir $sourceDir -SkipService *>&1 | Out-String
+          Write-Host $first
+          if ($first -notmatch 'openjarvis_rust extension imports successfully') {
+            throw 'First installer run did not build and import the native extension'
+          }
+          if ($first -notmatch 'Rust 1\.90\.0') {
+            throw 'First installer run did not report the pinned Rust 1.90.0 toolchain'
+          }
+          $shim = Join-Path $env:OPENJARVIS_HOME 'bin\jarvis.cmd'
+          if (-not (Test-Path $shim)) { throw "Installer did not create $shim" }
+
+          Write-Host '=== install.ps1: second run (idempotency) ==='
+          $second = & $installer -SourceDir $sourceDir -SkipService *>&1 | Out-String
+          Write-Host $second
+          if ($second -notmatch 'already healthy') {
+            throw 'Second run did not reuse the installed Rust toolchain'
+          }
+          if ($second -match 'toolchain install') {
+            throw 'Second run re-downloaded the Rust toolchain (not idempotent)'
+          }
+          if ($second -notmatch 'openjarvis_rust extension imports successfully') {
+            throw 'Second run did not verify the native extension'
+          }
+
+          # The installed tree must actually work: the shim resolves the
+          # project and the native extension from the real install location.
+          & uv run --project $sourceDir python -c "import openjarvis_rust; print('post-install openjarvis_rust import OK')"
+
       - name: REAL Python installer/toolchain regression tests
         shell: bash
         run: |
           # REAL Python regression tests + MOCKED PowerShell prerequisite
           # helpers (Get-PythonCommand / Test-MsvcLinker) and clone-branch tests.
+          # install.ps1 just re-synced this workspace venv with the desktop
+          # extras, which drops the dev group, so restore the test extras first.
+          uv sync --locked --extra dev --extra server
           uv run pytest \
             tests/install/test_windows_remediation.py \
             tests/install/test_windows_prerequisites.py \
@@ -224,17 +274,105 @@ jobs:
         working-directory: frontend
         run: npx tauri build --bundles nsis
 
-      - name: REAL backend startup and /health check
-        shell: bash
+      - name: REAL NSIS installer artifact check + upload
+        shell: pwsh
         run: |
-          uv run jarvis serve --host 127.0.0.1 --port 8000 > "/tmp/openjarvis-serve.log" 2>&1 &
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8000/health; then
-              echo "backend health OK"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "backend did not become healthy"
-          cat "/tmp/openjarvis-serve.log"
-          exit 1
+          $bundle = 'frontend\src-tauri\target\release\bundle\nsis'
+          if (-not (Test-Path $bundle)) { throw "NSIS bundle directory missing: $bundle" }
+          $setups = @(Get-ChildItem -LiteralPath $bundle -Filter '*setup.exe' -File)
+          if ($setups.Count -ne 1) {
+            throw "Expected exactly one NSIS setup.exe in $bundle, found $($setups.Count)"
+          }
+          $app = 'frontend\src-tauri\target\release\openjarvis-desktop.exe'
+          if (-not (Test-Path $app)) { throw "Desktop executable missing: $app" }
+          $setup = $setups[0]
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setup.FullName).Hash
+          Write-Host "NSIS installer: $($setup.FullName)"
+          Write-Host "Size: $([math]::Round($setup.Length / 1MB, 2)) MiB"
+          Write-Host "SHA-256: $hash"
+          "NSIS installer: $($setup.Name) ($([math]::Round($setup.Length / 1MB, 2)) MiB)`nSHA-256: $hash" |
+            Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'nsis-sha256.txt') -Encoding ASCII
+          "OPENJARVIS_NSIS_PATH=$($setup.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: OpenJarvis-Windows-x64-NSIS
+          path: |
+            frontend/src-tauri/target/release/bundle/nsis/*.exe
+            frontend/src-tauri/target/release/openjarvis-desktop.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: REAL backend startup and /health check (Ollama HTTP API mocked)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Only the external model provider is mocked: a tiny HTTP server that
+          # answers Ollama's /api/tags, so the REAL backend, REAL engine
+          # discovery and REAL /health route are what gets exercised. No model
+          # is downloaded and ollama.com is never contacted.
+          $stub = Join-Path $env:RUNNER_TEMP 'fake_ollama.py'
+          @'
+          import json
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+
+
+          class Handler(BaseHTTPRequestHandler):
+              def do_GET(self):
+                  body = json.dumps({"models": [{"name": "qwen3.5:2b"}]}).encode()
+                  self.send_response(200)
+                  self.send_header("Content-Type", "application/json")
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+
+              def log_message(self, *args):
+                  pass
+
+
+          HTTPServer(("127.0.0.1", 11434), Handler).serve_forever()
+          '@ | Set-Content -LiteralPath $stub -Encoding utf8
+
+          $stubProc = Start-Process -FilePath 'python' -ArgumentList @($stub) -PassThru -WindowStyle Hidden
+          $outLog = Join-Path $env:RUNNER_TEMP 'openjarvis-serve.log'
+          $errLog = Join-Path $env:RUNNER_TEMP 'openjarvis-serve.err.log'
+          # Exactly what the installed `jarvis` shim runs, so CI proves the
+          # user-facing command rather than a bare `uv run` with a different
+          # (smaller) environment.
+          $serveProc = Start-Process -FilePath 'uv' `
+            -ArgumentList @('run', '--locked', '--extra', 'desktop', '--extra', 'inference-cloud',
+              '--extra', 'inference-google', '--group', 'desktop-native',
+              'jarvis', 'serve', '--host', '127.0.0.1', '--port', '8000') `
+            -PassThru -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+          try {
+              $healthy = $false
+              $content = ''
+              for ($i = 0; $i -lt 60; $i++) {
+                  try {
+                      $response = Invoke-WebRequest -Uri 'http://127.0.0.1:8000/health' `
+                        -UseBasicParsing -TimeoutSec 5
+                      $content = $response.Content
+                      if ($response.StatusCode -eq 200 -and $content -match '"status"\s*:\s*"ok"') {
+                          $healthy = $true
+                          break
+                      }
+                  } catch {
+                      if ($serveProc.HasExited) { break }
+                  }
+                  Start-Sleep -Seconds 2
+              }
+              if (-not $healthy) {
+                  Write-Host '--- jarvis serve stdout ---'
+                  Get-Content -LiteralPath $outLog -ErrorAction SilentlyContinue
+                  Write-Host '--- jarvis serve stderr ---'
+                  Get-Content -LiteralPath $errLog -ErrorAction SilentlyContinue
+                  throw 'Backend /health did not return 200 with status ok'
+              }
+              Write-Host "Backend /health OK: $content"
+          } finally {
+              foreach ($proc in @($serveProc, $stubProc)) {
+                  if ($proc -and -not $proc.HasExited) {
+                      & taskkill /T /F /PID $proc.Id | Out-Null
+                  }
+              }
+          }

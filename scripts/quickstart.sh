@@ -116,10 +116,10 @@ with open(sys.argv[1]) as handle:
 if match is None:
     sys.exit("The quickstart requires a versioned Rust toolchain pin.")
 version = match.group(1)
-# rustup treats "1.89" and "1.89.0" as different toolchain names. Require the
+# rustup treats "1.90" and "1.90.0" as different toolchain names. Require the
 # fully qualified pin so a probe can never silently install a second toolchain.
 if len(version.split(".")) != 3:
-    sys.exit("The Rust toolchain pin must be fully qualified (e.g. 1.89.0).")
+    sys.exit("The Rust toolchain pin must be fully qualified (e.g. 1.90.0).")
 print(version)
 PY
 )

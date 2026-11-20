@@ -20,11 +20,14 @@ members = [
     "crates/openjarvis-scheduler",
 ]
 
-# uuid 1.27 requires Rust 1.89; keep this aligned with rust-toolchain.toml.
+# 1.90.0 is the minimum for the Tauri 2.12 desktop stack in
+# frontend/src-tauri/Cargo.lock (which requires rustc 1.90) and it also covers
+# the backend's own MSRVs (uuid 1.27 needs 1.89). Keep this aligned with
+# rust/rust-toolchain.toml.
 # Fully qualified so Dockerfiles, CI and installers all select the same
-# rustup toolchain name (rustup treats "1.89" and "1.89.0" as distinct).
+# rustup toolchain name (rustup treats "1.90" and "1.90.0" as distinct).
 [workspace.package]
-rust-version = "1.89.0"
+rust-version = "1.90.0"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

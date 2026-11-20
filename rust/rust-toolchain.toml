@@ -1,9 +1,16 @@
-# Pin the exact toolchain required by the workspace (uuid 1.27 needs Rust 1.89).
+# Pin the exact toolchain required by the workspace.
 #
-# Use a FULLY QUALIFIED version. rustup treats the two-part name "1.89" as a
-# different toolchain from an installed "1.89.0"; a proxy invoked inside this
+# 1.90.0 is the real minimum: the Tauri 2.12 desktop stack that
+# frontend/src-tauri/Cargo.lock resolves (tauri-utils, tauri-runtime,
+# tauri-runtime-wry, muda, tray-icon, ...) declares `rust-version = "1.90"`.
+# 1.89.0 cannot build OpenJarvis Desktop at all, which is why the whole repo
+# (backend workspace, desktop app, installers, Docker images and CI) is pinned
+# to this single version.
+#
+# Use a FULLY QUALIFIED version. rustup treats the two-part name "1.90" as a
+# different toolchain from an installed "1.90.0"; a proxy invoked inside this
 # directory would then silently install a second toolchain and re-download
-# every component on Windows. "1.89.0" matches the workspace MSRV in
+# every component on Windows. "1.90.0" matches the workspace MSRV in
 # rust/Cargo.toml and the explicit installs in the installers/CI.
 #
 # "minimal" is deliberate: it installs only rustc, cargo and rust-std. It is
@@ -16,5 +23,5 @@
 # force a cross-target std download on Linux and macOS too. The Windows
 # installer verifies/adds x86_64-pc-windows-msvc explicitly instead.
 [toolchain]
-channel = "1.89.0"
+channel = "1.90.0"
 profile = "minimal"
