@@ -645,7 +645,7 @@ function Test-PinnedRustToolchain {
         if ($LASTEXITCODE -ne 0) { return $false }
         & $RustupExe run $script:PinnedRustVersion cargo --version 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0) { return $false }
-        if (-not ($rustcOut -match '1\.89\.0')) { return $false }
+        if (-not ($rustcOut -match '1\.90\.0')) { return $false }
         return $true
     } catch {
         return $false
@@ -693,7 +693,7 @@ download or execute an unverified rustup-init binary.
     if ($rustcCmd) { Write-Info "  rustc ($($rustcCmd.Source))" } else { Write-Info "  rustc: proxy not on PATH yet" }
     if ($cargoCmd) { Write-Info "  cargo ($($cargoCmd.Source))" } else { Write-Info "  cargo: proxy not on PATH yet" }
 
-    $registered = @(& $rustupExe toolchain list 2>$null) | Where-Object { $_ -match '^1\.89\.0' }
+    $registered = @(& $rustupExe toolchain list 2>$null) | Where-Object { $_ -match '^1\.90\.0' }
 
     if (-not (Test-PinnedRustToolchain $rustupExe)) {
         if ($registered) {

@@ -365,3 +365,50 @@ def test_windows_ci_runs_the_real_installer_and_publishes_the_nsis_installer() -
     # labelled so it is never mistaken for a live model-provider test.
     assert "Ollama HTTP API mocked" in text
     assert "http://127.0.0.1:8000/health" in text
+
+
+def test_installer_toolchain_health_regex_matches_the_pinned_version() -> None:
+    """The health probe compares rustc's output with a regex pin.
+
+    A version bump that only changed ``$script:PinnedRustVersion`` left
+    ``-match '1\\.89\\.0'`` behind: every run then treated a perfectly healthy
+    toolchain as broken, attempted a repair install and failed. Keep the
+    escaped regexes derived from the pin, not duplicated by hand.
+    """
+    pin = tomllib.loads(TOOLCHAIN_TOML.read_text())["toolchain"]["channel"]
+    escaped = pin.replace(".", r"\.")
+    text = INSTALL_PS1.read_text()
+    assert f"-match '{escaped}'" in text, f"rustc probe regex must match {pin}"
+    assert f"-match '^{escaped}'" in text, f"toolchain-list regex must match {pin}"
+
+
+def test_no_stale_escaped_or_plain_rust_version_pins() -> None:
+    """Catch every quoting form of a stale pin (``1.89`` and ``1\\.89``)."""
+    pin = tomllib.loads(TOOLCHAIN_TOML.read_text())["toolchain"]["channel"]
+    major_minor = ".".join(pin.split(".")[:2])
+    # Match any minor version in either quoting form: "1.90", "1\\.90".
+    any_pin = re.compile(r"(?<![\d.])1\\\\?\.([89]\\d)")
+    scanned = [
+        *sorted((ROOT / "deploy").rglob("*.ps1")),
+        *sorted((ROOT / "deploy" / "docker").glob("Dockerfile*")),
+        *sorted((ROOT / "scripts").rglob("*.sh")),
+        *sorted((ROOT / ".github" / "workflows").glob("*.yml")),
+        *sorted((ROOT / "tests" / "install").rglob("*.ps1")),
+        *sorted((ROOT / "tests" / "install").rglob("*.bats")),
+        ROOT / "Makefile",
+        ROOT / "frontend" / "src-tauri" / "src" / "lib.rs",
+        TOOLCHAIN_TOML,
+        WORKSPACE_CARGO,
+        ROOT / "frontend" / "src-tauri" / "Cargo.toml",
+    ]
+    offenders = []
+    for path in scanned:
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for match in any_pin.finditer(line):
+                if f"1.{match.group(1)}" == major_minor:
+                    continue
+                offenders.append(f"{path.relative_to(ROOT)}:{number}: {line.strip()}")
+    assert not offenders, (
+        f"stale Rust pin ({major_minor}) next to the {pin} pin:\n"
+        + "\n".join(offenders)
+    )
