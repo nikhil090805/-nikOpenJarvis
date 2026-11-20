@@ -201,22 +201,20 @@ jobs:
           uv sync --locked --extra desktop --group desktop-native
           uv run python -c "import openjarvis_rust"
 
-      - name: REAL install.ps1 end-to-end, twice (idempotency; Ollama stubbed, no service)
+      - name: REAL install.ps1 end-to-end, twice (idempotency; real Ollama install)
         shell: pwsh
         env:
           OPENJARVIS_HOME: ${{ runner.temp }}\OpenJarvis
           OPENJARVIS_REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
         run: |
           $ErrorActionPreference = 'Stop'
-          # This runs the REAL installer, not a copy of its logic. Ollama is the
-          # only external service stubbed: the stub takes the installer's
-          # "already on PATH" branch so nothing is downloaded, started or
-          # pulled, and no third-party installer executes.
-          $stub = Join-Path $env:RUNNER_TEMP 'oj-ollama-stub'
-          New-Item -ItemType Directory -Path $stub -Force | Out-Null
-          Set-Content -LiteralPath (Join-Path $stub 'ollama.cmd') `
-            -Value "@echo off`r`nexit /b 0" -Encoding ASCII
-          $env:Path = "$stub;$env:Path"
+          # This runs the REAL installer, not a copy of its logic, and it does
+          # NOT stub Ollama: install.ps1 refreshes PATH from the registry, so a
+          # PATH-only stub is discarded and the installer takes its real
+          # winget/direct-download branch and pulls the starter model. The
+          # second run must then find Ollama and the model already present,
+          # which is exactly the idempotency asserted below. Only the Windows
+          # service/task is skipped (-SkipService).
 
           $installer = Join-Path (Get-Location).Path 'deploy\windows\install.ps1'
           $sourceDir = (Get-Location).Path
@@ -255,6 +253,9 @@ jobs:
         run: |
           # REAL Python regression tests + MOCKED PowerShell prerequisite
           # helpers (Get-PythonCommand / Test-MsvcLinker) and clone-branch tests.
+          # install.ps1 just re-synced this workspace venv with the desktop
+          # extras, which drops the dev group, so restore the test extras first.
+          uv sync --locked --extra dev --extra server
           uv run pytest \
             tests/install/test_windows_remediation.py \
             tests/install/test_windows_prerequisites.py \
