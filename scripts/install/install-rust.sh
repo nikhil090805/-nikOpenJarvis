@@ -5,11 +5,11 @@
 # Idempotent: exits 0 immediately if cargo is on PATH, so an already installed
 # toolchain is never re-downloaded. The fully qualified version and the
 # minimal profile match rust/rust-toolchain.toml and rust/Cargo.toml; a
-# two-part "1.89" would be a DIFFERENT rustup toolchain name from "1.89.0".
+# two-part "1.90" would be a DIFFERENT rustup toolchain name from "1.90.0".
 
 set -euo pipefail
 
-PINNED_RUST_VERSION="1.89.0"
+PINNED_RUST_VERSION="1.90.0"
 # Prevent rustup proxies from silently installing toolchains/components.
 export RUSTUP_AUTO_INSTALL=0
 

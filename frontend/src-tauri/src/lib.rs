@@ -908,9 +908,9 @@ fn rust_toolchain_install_hint() -> &'static str {
             `rustup target add --toolchain stable x86_64-pc-windows-msvc`, then relaunch. \
             (ARM64 intentionally keeps the stable x64-emulation toolchain override.)";
     #[cfg(not(all(target_os = "windows", target_arch = "aarch64")))]
-    "The desktop app needs the pinned Rust 1.89.0 toolchain (minimal profile) to build \
+    "The desktop app needs the pinned Rust 1.90.0 toolchain (minimal profile) to build \
      `openjarvis_rust`. Run deploy/windows/install.ps1 once, or install it explicitly with \
-     `rustup toolchain install 1.89.0 --profile minimal`. On Windows, also install Visual \
+     `rustup toolchain install 1.90.0 --profile minimal`. On Windows, also install Visual \
      Studio Build Tools with the C++ workload, then relaunch."
 }
 

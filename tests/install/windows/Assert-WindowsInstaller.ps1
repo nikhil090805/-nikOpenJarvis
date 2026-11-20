@@ -63,7 +63,7 @@ foreach ($path in @($installerPath, $servicePath)) {
 # ---------------------------------------------------------------------------
 Assert-Contains 'https://github.com/nikhil090805/-nikOpenJarvis.git' 'installer must default to this fork'
 Assert-True (-not $installerText.Contains("'https://github.com/open-jarvis/OpenJarvis.git'")) 'installer must not default to upstream'
-Assert-Contains "PinnedRustVersion = '1.89.0'" 'fully qualified Rust pin'
+Assert-Contains "PinnedRustVersion = '1.90.0'" 'fully qualified Rust pin'
 Assert-Contains '--profile minimal' 'minimal Rust profile'
 Assert-Contains 'RUSTUP_AUTO_INSTALL' 'proxy auto-install must be disabled'
 Assert-Contains 'RUSTUP_TOOLCHAIN' 'explicit toolchain selection'
@@ -115,7 +115,7 @@ foreach ($ast in @($installerAst, $serviceAst)) {
     foreach ($def in $defs) { Invoke-Expression $def.Extent.Text }
 }
 
-$script:PinnedRustVersion = '1.89.0'
+$script:PinnedRustVersion = '1.90.0'
 $script:RustHostTarget = 'x86_64-pc-windows-msvc'
 $env:RUSTUP_AUTO_INSTALL = '0'
 
@@ -147,7 +147,7 @@ $mockRustup = Join-Path $mockDir 'rustup.cmd'
 $mockRustupContent = @"
 @echo off
 echo %* >> "$mockLog"
-echo 1.89.0-x86_64-pc-windows-msvc
+echo 1.90.0-x86_64-pc-windows-msvc
 echo x86_64-pc-windows-msvc
 exit /b 0
 "@
@@ -162,9 +162,9 @@ try {
     Assert-RustToolchain
     $calls = @(Get-Content -LiteralPath $mockLog -ErrorAction SilentlyContinue)
     Assert-True (-not ($calls -match 'toolchain install')) 'healthy pinned toolchain must not be re-downloaded'
-    Assert-True ($env:RUSTUP_TOOLCHAIN -eq '1.89.0') 'explicit toolchain selected for the build'
+    Assert-True ($env:RUSTUP_TOOLCHAIN -eq '1.90.0') 'explicit toolchain selected for the build'
     Assert-True ($env:RUSTUP_AUTO_INSTALL -eq '0') 'auto-install disabled for the build'
-    Write-Host '[ok] Rust 1.89.0 minimal: healthy path performs no download (mocked)'
+    Write-Host '[ok] Rust 1.90.0 minimal: healthy path performs no download (mocked)'
 } finally {
     Remove-Item -LiteralPath $mockDir -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -177,7 +177,7 @@ $mockRustup2 = Join-Path $mockDir2 'rustup.cmd'
 $mockRustupContent2 = @"
 @echo off
 echo %* >> "$mockLog2"
-echo 1.89.0-x86_64-pc-windows-msvc
+echo 1.90.0-x86_64-pc-windows-msvc
 exit /b 0
 "@
 Set-Content -LiteralPath $mockRustup2 -Value $mockRustupContent2 -Encoding ASCII

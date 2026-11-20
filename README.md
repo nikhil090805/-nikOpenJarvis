@@ -52,7 +52,7 @@ Then `jarvis` to start. `jarvis doctor` shows status; the Windows installer
 verifies `import openjarvis_rust` before reporting success.
 
 > **Native Windows:** do not pipe a remote script into PowerShell. Run the
-> installer from your own fork checkout. It provisions Rust **1.89.0**
+> installer from your own fork checkout. It provisions Rust **1.90.0**
 > (`minimal`, `x86_64-pc-windows-msvc`), verifies the MSVC linker/SDK and
 > Ollama, and defaults to this fork's repository. See
 > [`deploy/windows/README.md`](deploy/windows/README.md) for the complete

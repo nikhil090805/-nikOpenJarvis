@@ -24,13 +24,13 @@ RUN apt-get update && \
 
 ENV PATH="/root/.cargo/bin:${PATH}"
 # Pin the toolchain explicitly and forbid rustup proxy auto-installation.
-ENV RUSTUP_TOOLCHAIN=1.89.0
+ENV RUSTUP_TOOLCHAIN=1.90.0
 ENV RUSTUP_AUTO_INSTALL=0
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
         sh -s -- -y --profile minimal --default-toolchain none && \
-    rustup toolchain install 1.89.0 --profile minimal --no-self-update && \
-    rustup default 1.89.0
+    rustup toolchain install 1.90.0 --profile minimal --no-self-update && \
+    rustup default 1.90.0
 
 WORKDIR /app
 

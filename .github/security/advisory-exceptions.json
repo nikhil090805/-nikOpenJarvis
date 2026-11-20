@@ -42,6 +42,17 @@
     },
     {
       "lockfile": "rust/Cargo.lock",
+      "package": "chrono",
+      "version": "0.4.45",
+      "advisories": [
+        "RUSTSEC-2026-0543"
+      ],
+      "reason": "RUSTSEC-2026-0543 is an unmaintained-package notice, not a vulnerability or unsoundness: chrono has no known unsound API in this release. chrono 0.4.45 is a direct dependency of six backend crates (core, scheduler, security, telemetry, tools, traces) and no patched release exists, so no upgrade can clear it. Replacing chrono with jiff/time touches those six crates and their public timestamp types; that migration is a separate, reviewable change and is deliberately not mixed into the Windows installation repair. Track this exact pinned version until it lands.",
+      "upstream": "https://rustsec.org/advisories/RUSTSEC-2026-0543.html",
+      "expires": "2026-12-16"
+    },
+    {
+      "lockfile": "rust/Cargo.lock",
       "package": "pin-utils",
       "version": "0.1.0",
       "advisories": [

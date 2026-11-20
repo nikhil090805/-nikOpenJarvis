@@ -36,7 +36,7 @@ rustup target add --toolchain stable x86_64-pc-windows-msvc
 ```
 
 The ARM64 app intentionally uses **stable** Rust for backend builds so the
-compiler matches the installed x64 target, rather than selecting the 1.89.0
+compiler matches the installed x64 target, rather than selecting the 1.90.0
 MSRV pin (`RUSTUP_TOOLCHAIN=stable` in `frontend/src-tauri/src/lib.rs` and the
 ARM64 CI job). This override is deliberate; do not apply it to x64 installs.
 It also supplies PyO3's cross-compilation settings for x64 CPython 3.12. The
@@ -72,7 +72,7 @@ performance on physical Windows ARM hardware.
 ## What you get
 
 - A PowerShell installer that probes prerequisites, installs `uv`, verifies or
-  clones this fork, provisions Rust 1.89.0 (`minimal`), and runs
+  clones this fork, provisions Rust 1.90.0 (`minimal`), and runs
   `uv sync --locked --extra desktop --group desktop-native`.
 - An optional Windows scheduled-task service with validated arguments and
   DPAPI-protected credentials.
@@ -86,10 +86,19 @@ performance on physical Windows ARM hardware.
 | OS | Windows 10 1809+ or Windows 11, x64 |
 | Python | 3.11 – 3.13 (3.14 has no numpy Windows wheels yet, see #432) |
 | Git | on `PATH` |
-| Rust | **1.89.0**, `minimal` profile, target `x86_64-pc-windows-msvc` |
+| Rust | **1.90.0**, `minimal` profile, target `x86_64-pc-windows-msvc` (see note below) |
 | MSVC | VS 2022 Build Tools, **Desktop development with C++** (linker + Windows SDK) |
 | Node.js / npm (desktop source build only) | `>=22.22`, npm `11.19.0` |
 | Disk | ~5 GB free on `%LOCALAPPDATA%` |
+
+Rust **1.90.0** is a hard minimum, not a preference: the Tauri 2.12 desktop
+stack pinned in `frontend/src-tauri/Cargo.lock` (`tauri-utils`,
+`tauri-runtime`, `tauri-runtime-wry`, `muda`, `tray-icon`, the `tauri-plugin-*`
+crates) declares `rust-version = "1.90"`, so 1.89 cannot build the desktop app
+at all. The backend workspace, both Docker images, the installers and CI are
+pinned to the same fully qualified `1.90.0` so no second toolchain gets
+downloaded. Ordinary installs use `--profile minimal` (no rustfmt/clippy);
+only the lint job installs those components.
 
 ## Install (one verified procedure)
 
@@ -111,9 +120,9 @@ The installer will:
 3. Install `uv` via winget or a SHA-256-verified pinned release.
 4. Clone / verify this fork at `%LOCALAPPDATA%\OpenJarvis\src`.
 5. Verify the MSVC linker and Windows SDK.
-6. Detect `rustup`, `rustc`, `cargo`; install Rust 1.89.0 with
+6. Detect `rustup`, `rustc`, `cargo`; install Rust 1.90.0 with
    `--profile minimal` only if needed; verify the MSVC target; set
-   `RUSTUP_TOOLCHAIN=1.89.0` and `RUSTUP_AUTO_INSTALL=0`.
+   `RUSTUP_TOOLCHAIN=1.90.0` and `RUSTUP_AUTO_INSTALL=0`.
 7. Run `uv sync --locked --extra desktop --group desktop-native` and verify
    `import openjarvis_rust`.
 8. Install/verify Ollama and the starter model.
@@ -149,11 +158,27 @@ npx tauri build --bundles nsis
 ```
 
 The NSIS installer is in
-`frontend\src-tauri\target\release\bundle\nsis\`. Windows CI
-(`.github/workflows/installer-integration.yml`, `windows-x64`) exercises this
-exact build path. The desktop app preserves chat, settings, model selection,
-history, energy monitoring and trace views; it starts `uv sync` and
-`jarvis serve` itself, so no extra terminals are needed.
+`frontend\src-tauri\target\release\bundle\nsis\`. If you do not want to
+build it yourself, every Windows installer-integration run publishes a built
+copy: open
+<https://github.com/nikhil090805/-nikOpenJarvis/actions/workflows/installer-integration.yml>,
+pick the newest successful `Windows x64` run, and download the
+**`OpenJarvis-Windows-x64-NSIS`** artifact (retained 14 days). It contains
+`*_x64-setup.exe` plus the raw `openjarvis-desktop.exe`, and the run log prints
+the installer's SHA-256.
+
+That `windows-x64` job verifies, on a real Windows runner: the pinned Rust
+toolchain and MSVC/SDK, `uv sync --locked --extra desktop --group
+desktop-native`, `import openjarvis_rust`, the real `install.ps1` run twice
+(idempotency), the frontend tests and production build, the real Tauri build,
+the presence and hash of the NSIS installer, and a real `jarvis serve` process
+whose `/health` returns `{"status": "ok"}`. The Ollama HTTP API is mocked for
+that last check (and Ollama itself is stubbed for the installer run) so no
+model is downloaded in CI; the backend and the health route are real.
+
+The desktop app preserves chat, settings, model selection, history, energy
+monitoring and trace views; it starts `uv sync` and `jarvis serve` itself, so
+no extra terminals are needed.
 
 ## Scheduled-task service
 
@@ -175,8 +200,8 @@ environment variable. See `deploy/windows/README.md` for details.
 If Windows Defender flags a file in `%USERPROFILE%\.rustup\downloads\`:
 do not disable Defender, add exclusions, or restore the quarantined file.
 Record the reported SHA-256 from Protection history, compare it with the
-official Rust 1.89.0 checksums/signatures at
-`https://static.rust-lang.org/dist/channel-rust-1.89.0.toml`, and submit the
+official Rust 1.90.0 checksums/signatures at
+`https://static.rust-lang.org/dist/channel-rust-1.90.0.toml`, and submit the
 sample to <https://www.microsoft.com/en-us/wdsi/filesubmission>. Do not assume
 a false positive until the hash/signature and Microsoft's determination agree.
 Full steps are in `deploy/windows/README.md`.

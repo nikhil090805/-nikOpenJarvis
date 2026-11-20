@@ -4,6 +4,10 @@ version = "1.0.1"
 description = "OpenJarvis Desktop — Native AI assistant with energy monitoring, trace debugging, and learning visualization"
 edition = "2021"
 license = "MIT"
+# The Tauri 2.12 stack resolved by Cargo.lock declares rust-version 1.90, so
+# building this crate with an older toolchain fails. Keep this in sync with
+# rust/rust-toolchain.toml and rust/Cargo.toml.
+rust-version = "1.90.0"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

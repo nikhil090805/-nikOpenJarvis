@@ -35,7 +35,7 @@ def preflight(tmp_path):
     (repo / "frontend").mkdir()
     (repo / "rust").mkdir()
     (repo / "rust" / "rust-toolchain.toml").write_text(
-        '[toolchain]\nchannel = "1.89.0"\n'
+        '[toolchain]\nchannel = "1.90.0"\n'
     )
     (repo / "frontend" / "package.json").write_text(
         json.dumps({"engines": {"node": ">=22.22"}, "packageManager": "npm@11.19.0"})
@@ -87,7 +87,7 @@ def preflight(tmp_path):
         'echo rustup >> "$TEST_COMMAND_LOG"\n'
         'mkdir -p "$HOME/.cargo/bin"\n'
         "for command in rustc cargo; do\n"
-        "  printf '#!/bin/sh\\necho %s 1.89.0\\n' \"$command\" "
+        "  printf '#!/bin/sh\\necho %s 1.90.0\\n' \"$command\" "
         '> "$HOME/.cargo/bin/$command"\n'
         '  chmod +x "$HOME/.cargo/bin/$command"\n'
         "done\n"
@@ -108,7 +108,7 @@ def preflight(tmp_path):
             "TEST_NPM_VERSION_FILE": str(version_file),
             "TEST_COMMAND_LOG": str(log),
             "TEST_RUST_BROKEN": "0",
-            "TEST_RUST_VERSION": "1.89.0",
+            "TEST_RUST_VERSION": "1.90.0",
             "TEST_NPM_UPGRADE_FAIL": "0",
             "TEST_NPM_NO_UPDATE": "0",
             **settings,
