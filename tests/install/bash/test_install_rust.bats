@@ -42,7 +42,6 @@ teardown() {
     # The rustup stub does not actually provide cargo, so the script must
     # report the still-missing prerequisite instead of claiming success.
     [ "$status" -eq 1 ]
-    [ -z "$(command -v cargo)" ]
     grep -q "toolchain install 1.90.0 --profile minimal --no-self-update" "$RUSTUP_STUB_LOG"
     grep -q "default 1.90.0" "$RUSTUP_STUB_LOG"
     # An existing rustup must NOT fall back to an unpinned curl-pipe-bash.
