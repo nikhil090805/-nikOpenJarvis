@@ -117,6 +117,13 @@ foreach ($ast in @($installerAst, $serviceAst)) {
 
 $script:PinnedRustVersion = '1.90.0'
 $script:RustHostTarget = 'x86_64-pc-windows-msvc'
+# Read the uv pin out of the installer instead of duplicating the literal, so
+# the harness cannot drift from the shipped script. Under
+# Set-StrictMode -Version Latest an unset $script: variable is a fatal error,
+# which is how this gap surfaced once the parse bug stopped masking it.
+$uvPinMatch = [regex]::Match($installerText, "UvVersion\s*=\s*'([^']+)'")
+Assert-True $uvPinMatch.Success 'installer pins an explicit uv version'
+$script:UvVersion = $uvPinMatch.Groups[1].Value
 $env:RUSTUP_AUTO_INSTALL = '0'
 
 function Write-Info  { param($msg) }
