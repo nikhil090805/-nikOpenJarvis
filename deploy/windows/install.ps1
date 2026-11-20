@@ -512,7 +512,15 @@ if (Test-Path (Join-Path $srcDir '.git')) {
     # Preserve history without partial-clone lazy fetches from local sources,
     # which may themselves be shallow. Remote sources can omit old blobs.
     if ($repoUrl -like 'file://*' -or (Test-Path -LiteralPath $repoUrl -ErrorAction SilentlyContinue)) {
-        & $gitExe clone $repoUrl $srcDir
+        # A file:// URL still goes through git's upload-pack transport, which
+        # refuses to serve a shallow source repository ("attempt to fetch/clone
+        # from a shallow repository") and cannot satisfy a partial clone's lazy
+        # fetches. Hand git the plain filesystem path instead, so a local source
+        # (shallow or not, and with spaces or brackets in its path) always
+        # clones through the local transport. Remote URLs are unaffected.
+        $localSource = $repoUrl
+        if ($repoUrl -like 'file://*') { $localSource = ([uri]$repoUrl).LocalPath }
+        & $gitExe clone $localSource $srcDir
     } else {
         & $gitExe clone --filter=blob:none $repoUrl $srcDir
     }
@@ -868,11 +876,15 @@ if (-not (Test-Path $binDir)) {
 # break it as long as the user moves the whole tree. `uv` is resolved
 # from PATH at runtime (astral installer adds it to User PATH); avoids
 # pinning to the install-time uv.exe path which can shift on uv updates.
+# The extras and the native-extension group are spelled out so `uv run` can
+# never re-sync the environment down to the bare default set and drop what the
+# installer just built (uvicorn/fastapi from the desktop extra, the maturin
+# build from the desktop-native group, the cloud provider SDKs).
 $shimContent = @"
 @echo off
 setlocal
 set "SRC=%~dp0..\src"
-uv run --project "%SRC%" jarvis %*
+uv run --locked --project "%SRC%" --extra desktop --extra inference-cloud --extra inference-google --group desktop-native jarvis %*
 "@
 Set-Content -Path $shimPath -Value $shimContent -Encoding ASCII
 

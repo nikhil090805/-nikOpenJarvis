@@ -93,6 +93,20 @@ jarvis serve            # or let the desktop app start it for you
 
 Then open <http://127.0.0.1:8000/health> — it must return a healthy response.
 
+The `jarvis` shim runs the environment the installer built, so it is worth
+knowing its exact form:
+
+```text
+uv run --locked --project %LOCALAPPDATA%\OpenJarvis\src ^
+  --extra desktop --extra inference-cloud --extra inference-google ^
+  --group desktop-native jarvis %*
+```
+
+Spelling out the extras and the `desktop-native` group keeps `uv` from
+re-syncing the environment down to the bare defaults and dropping `uvicorn`/
+`fastapi`, the compiled `openjarvis_rust` module, or the cloud provider SDKs.
+If you invoke `uv run` yourself, pass the same flags.
+
 ---
 
 ## Repository selection

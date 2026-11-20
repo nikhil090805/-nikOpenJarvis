@@ -336,8 +336,13 @@ jobs:
           $stubProc = Start-Process -FilePath 'python' -ArgumentList @($stub) -PassThru -WindowStyle Hidden
           $outLog = Join-Path $env:RUNNER_TEMP 'openjarvis-serve.log'
           $errLog = Join-Path $env:RUNNER_TEMP 'openjarvis-serve.err.log'
+          # Exactly what the installed `jarvis` shim runs, so CI proves the
+          # user-facing command rather than a bare `uv run` with a different
+          # (smaller) environment.
           $serveProc = Start-Process -FilePath 'uv' `
-            -ArgumentList @('run', 'jarvis', 'serve', '--host', '127.0.0.1', '--port', '8000') `
+            -ArgumentList @('run', '--locked', '--extra', 'desktop', '--extra', 'inference-cloud',
+              '--extra', 'inference-google', '--group', 'desktop-native',
+              'jarvis', 'serve', '--host', '127.0.0.1', '--port', '8000') `
             -PassThru -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog
           try {
               $healthy = $false

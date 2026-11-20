@@ -136,6 +136,11 @@ jarvis doctor
 jarvis serve
 ```
 
+The shim pins the environment the installer synced (`uv run --locked
+--extra desktop --extra inference-cloud --extra inference-google --group
+desktop-native jarvis`), so `jarvis` never re-syncs itself down to the bare
+defaults. Pass the same flags if you run `uv run` directly.
+
 Open <http://127.0.0.1:8000/health> to verify. With the desktop app you do not
 need to start the backend manually — launch **OpenJarvis** and complete the
 in-app onboarding; the Admin Panel shows "Starting..." until `/health` responds.
